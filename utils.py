@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.signal import butter, filtfilt
+import scipy.signal as sg
 
 # 1. Spectral Params
 WIN_DUR = 0.064
@@ -21,22 +21,25 @@ def butter_filter(data, cutoff, fs, btype, order=5):
     normal_cutoff = cutoff / nyq
 
     # Get filter coefficients
-    b, a = butter(order, normal_cutoff, btype=btype, analog=False)
+    b, a = sg.butter(order, normal_cutoff, btype=btype, analog=False)
 
     # Apply filter
-    y = filtfilt(b, a, data)
+    y = sg.filtfilt(b, a, data)
     return y
 
 def resample_fs(sig,fs_old,fs_new):
-    sig=butter_filter(data=sig,cutoff=fs_new,fs=fs_old,btype='low')
+    if fs_old==fs_new:
+        return sig,fs_old
+    if fs_new<fs_old:
+        fn=fs_new/2
+        sig=butter_filter(data=sig,cutoff=fn,fs=fs_old,btype='low')
     num_samples = int(len(sig) * fs_new / fs_old)
-    resampled_sig = sp.resample(sig, num_samples)
+    resampled_sig = sg.resample(sig, num_samples)
     return resampled_sig,fs_new
 
 def calc_stft(sig, fs, mode="linear"):
-    window_size = int(np.round(fs * WIN_DUR))
-    n_overlap = int(np.round((WIN_DUR * fs) * (1 - HOP_FRAC)))
-    f1, t1, sig_stft = sp.stft(x=sig, fs=fs, noverlap=n_overlap, nperseg=window_size)
+    n_overlap, window_size = stft_params_calc(fs)
+    f1, t1, sig_stft = sg.stft(x=sig, fs=fs, noverlap=n_overlap, nperseg=window_size)
     stft_abs = np.abs(sig_stft)
 
     if mode == "linear":
@@ -46,6 +49,13 @@ def calc_stft(sig, fs, mode="linear"):
         return f1, t1, 20 * np.log10(stft_abs + EPSILON)
     else:  # Added the missing colon here
         return f1, t1, sig_stft
+
+
+def stft_params_calc(fs) -> tuple[int, int]:
+    window_size = int(fs * WIN_DUR)
+    n_overlap = int(((WIN_DUR * fs) * (1 - HOP_FRAC)))
+    return n_overlap, window_size
+
 
 def plot_stft(stft, ax, t=None, f=None, mode="dB", vmin=-90, vmax=-20):
     """
@@ -87,8 +97,13 @@ def plot_stft(stft, ax, t=None, f=None, mode="dB", vmin=-90, vmax=-20):
     plt.show()
 
 
-import numpy as np
-
+def coherence_of_sigs(sig,noise,fs):
+    n_overlap, window_size = stft_params_calc(fs)
+    f, Cxy = sg.coherence(sig, noise, fs=fs,noverlap=n_overlap, nperseg=window_size)
+    plt.plot(f, Cxy)
+    plt.xlabel('frequency [Hz]')
+    plt.ylabel('Coherence')
+    plt.show(block=True)
 
 def match_sigs(ref: np.ndarray, sig: np.ndarray):
     """
@@ -116,6 +131,9 @@ def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
     This function computes the offset between the signal sig and the reference signal refsig
     using the Generalized Cross Correlation - Phase Transform (GCC-PHAT)method.
     Code src: https://github.com/xiongyihui/tdoa/blob/master/gcc_phat.py
+
+    ref-the one signal we want to corr with sig
+    sig - the trusted signal that we want to corr on
     '''
 
     if torch.is_tensor(sig):
@@ -145,3 +163,4 @@ def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
     tau = shift / float(interp * fs)
 
     return tau
+

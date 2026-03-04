@@ -1,12 +1,11 @@
 import utils
 from utils import resample_fs
 import numpy as np
-import IO as ioloader
 from pyroomacoustics.adaptive import NLMS
 
 
 
-def NLMS_calculation(total_sig, noise, fs1, fs2, fs_resample=16000,filter_window=1024,mu=0.1,output_file=""):
+def NLMS_calculation(total_sig, noise, fs1, fs2, fs_resample=16000,filter_window=1024,mu=0.1):
     """
     Applies NLMS and filtering using pyroomacoustics NLMS.
     """  # <--- Fixed closing quotes here
@@ -28,13 +27,12 @@ def NLMS_calculation(total_sig, noise, fs1, fs2, fs_resample=16000,filter_window
     total_sig, noise = utils.match_sigs(ref=total_sig, sig=noise)
 
     l = NLMS(length=filter_window,mu=mu)
-    e = np.zeros(min_len)
+    e = np.zeros(len(total_sig))
 
     # 5. Adaptive filtering loop
     # Using the pyroomacoustics built-in update logic
-    for n in range(min_len):
+    for n in range(len(total_sig)):
         l.update(noise[n], total_sig[n])
         e[n] = total_sig[n] - np.dot(l.w, l.x)
 
-    ioloader.save_sound(filename=output_file,data=e,fs=fs_resample)
     return e

@@ -15,9 +15,8 @@ specific language governing permissions and limitations under the License.
 '''
 import torch
 import torch.nn as nn
-import soundfile as sf
 from utils import gcc_phat
-import argparse
+import numpy as np
 
 
 class ComplexGRU(nn.Module):
@@ -143,36 +142,54 @@ class NKF(nn.Module):
         return s_hat
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="NKF inference")
-    parser.add_argument('-x', type=str, default='./ref.wav',
-                        help='path to the ref signal')
-    parser.add_argument('-y', type=str, default='./mic.wav',
-                        help='path to the mic signal')
-    parser.add_argument('-o', type=str, default='./res.wav',
-                        help='path to save the AEC result')
-    parser.add_argument('-a', "--align", action='store_true', help='whether to align x and y')
-    args = parser.parse_args()
-
+def process_nkf(sig:np.ndarray, noise:np.ndarray,sr:int=16000):
+    #assumes that both signals are at the same sample rate- prefered nkf sample rate 16KHZ
+    if len(sig)!=len(noise):
+        raise IndexError("Both arrays must be at the same sizes")
     model = NKF(L=4)
     numparams = 0
     for f in model.parameters():
         numparams += f.numel()
     print('Total number of parameters: {:,}'.format(numparams))
-    model.load_state_dict(torch.load('./nkf_epoch70.pt'), strict=True)
+    model.load_state_dict(torch.load(rf"C:\Users\Omer\Documents\Projects\AudioEnhancement\ANC\nkf_epoch70.pt"), strict=True)
     model.eval()
 
-    x, sr = sf.read(args.x)
-    y, sr = sf.read(args.y)
-    x = torch.from_numpy(x).float()
-    y = torch.from_numpy(y).float()
-
-    if args.align:
-        tau = gcc_phat(y[:sr * 10], x[:sr * 10], fs=sr, interp=1)
-        tau = max(0, int((tau - 0.001) * sr))
-        x = torch.cat([torch.zeros(tau), x])[:y.shape[-1]]
+    noise = torch.from_numpy(noise).float()
+    sig = torch.from_numpy(sig).float()
 
     with torch.no_grad():
-        s_hat = model(x, y)
-
-    sf.write(args.o, s_hat.cpu().numpy(), sr)
+        s_hat = model(noise, sig)
+    return s_hat
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser(description="NKF inference")
+#     parser.add_argument('-x', type=str, default='./ref.wav',
+#                         help='path to the ref signal')
+#     parser.add_argument('-y', type=str, default='./mic.wav',
+#                         help='path to the mic signal')
+#     parser.add_argument('-o', type=str, default='./res.wav',
+#                         help='path to save the AEC result')
+#     parser.add_argument('-a', "--align", action='store_true', help='whether to align x and y')
+#     args = parser.parse_args()
+#
+#     model = NKF(L=4)
+#     numparams = 0
+#     for f in model.parameters():
+#         numparams += f.numel()
+#     print('Total number of parameters: {:,}'.format(numparams))
+#     model.load_state_dict(torch.load(rf"C:\Users\Omer\Documents\Projects\AudioEnhancement\ANC\nkf_epoch70.pt"), strict=True)
+#     model.eval()
+#
+#     x, sr = sf.read(args.x)
+#     y, sr = sf.read(args.y)
+#     x = torch.from_numpy(x).float()
+#     y = torch.from_numpy(y).float()
+#
+#     if args.align:
+#         tau = gcc_phat(y[:sr * 10], x[:sr * 10], fs=sr, interp=1)
+#         tau = max(0, int((tau - 0.001) * sr))
+#         x = torch.cat([torch.zeros(tau), x])[:y.shape[-1]]
+#
+#     with torch.no_grad():
+#         s_hat = model(x, y)
+#
+#     sf.write(args.o, s_hat.cpu().numpy(), sr)
