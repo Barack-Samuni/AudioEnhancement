@@ -54,4 +54,5 @@ jobs:
 
       - name: Run tests
         shell: pwsh
-        run: pytest -q --no-tests=pass -vv -ra -W default
+        run:  |
+         pytest -q --no-tests=pass -vv -ra -W default
