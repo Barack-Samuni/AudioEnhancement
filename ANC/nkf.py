@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 from utils import gcc_phat
 import numpy as np
+import config
 
 
 class ComplexGRU(nn.Module):
@@ -167,7 +168,7 @@ def process_nkf(sig:np.ndarray, noise:np.ndarray,sr:int=16000):
     for f in model.parameters():
         numparams += f.numel()
     print('Total number of parameters: {:,}'.format(numparams))
-    model.load_state_dict(torch.load(rf"C:\Users\Omer\Documents\Projects\AudioEnhancement\ANC\nkf_epoch70.pt"), strict=True)
+    model.load_state_dict(torch.load(config.PATH), strict=True)
     model.eval()
 
     noise = torch.from_numpy(noise).float()

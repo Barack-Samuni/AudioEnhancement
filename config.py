@@ -1,0 +1,1 @@
+PATH=rf"C:\Users\Omer\Documents\Projects\AudioEnhancement\ANC\nkf_epoch70.pt"
