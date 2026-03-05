@@ -1,5 +1,7 @@
 import numpy as np
+from numpy import dtype, ndarray, number
 from tqdm import tqdm
+from typing import Tuple, Any
 
 
 class RLSFilter:
@@ -9,7 +11,7 @@ class RLSFilter:
     minimize the weighted least squares error of the input signals.
     """
 
-    def __init__(self, n_taps, lam=0.999, delta=10.0):
+    def __init__(self, n_taps: int, lam: float = 0.999, delta: float = 10.0):
         """
         Initializes the RLS filter state.
 
@@ -24,7 +26,8 @@ class RLSFilter:
         self.w = np.zeros(n_taps)  # Filter weights initialization
         self.P = (1.0 / delta) * np.eye(n_taps)  # Inverse correlation matrix initialization
 
-    def adapt(self, x, d):
+    def adapt(self, x: np.ndarray, d: float) -> tuple[ndarray[tuple[int, ...], dtype[Any]], ndarray[
+        tuple[int, ...], dtype[number[Any, int | float | complex] | Any]]]:
         """
         Updates filter weights based on a single input vector and desired output.
 
@@ -40,8 +43,8 @@ class RLSFilter:
             raise ValueError("Input vector length must match n_taps")
 
         # Gain vector calculation (k)
-        Pi_x = self.P @ x
-        k = Pi_x / (self.lam + x.T @ Pi_x)
+        pi_x = self.P @ x
+        k = pi_x / (self.lam + x.T @ pi_x)
 
         # Compute filter output (y) and estimation error (e)
         y = self.w @ x
@@ -55,7 +58,7 @@ class RLSFilter:
 
         return y, e
 
-    def predict(self, x):
+    def predict(self, x: np.ndarray) -> ndarray[tuple[int, ...], dtype[Any]]:
         """
         Predicts output for a given input using current weights without adaptation.
 
@@ -67,7 +70,7 @@ class RLSFilter:
         """
         return self.w @ np.array(x)
 
-    def process(self, noisy_signal, noise):
+    def process(self, noisy_signal: np.ndarray, noise: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
         Processes entire signal arrays through the adaptive filter.
 
@@ -77,26 +80,37 @@ class RLSFilter:
 
         Returns:
             tuple: (processed signal array, error signal array).
+
+        Raises:
+            ValueError: If inputs are invalid or signal too short for filter
         """
-        # wraps the whole process of filtering the signal
+        # Input validation
+        if not isinstance(noisy_signal, np.ndarray) or not isinstance(noise, np.ndarray):
+            raise ValueError("Both noisy_signal and noise must be numpy arrays")
+
+        if noisy_signal.size == 0 or noise.size == 0:
+            raise ValueError("Input signals cannot be empty")
+
         # Ensure both have the same length and shape
         min_len = min(len(noisy_signal), len(noise))
+
+        if min_len < self.n_taps:
+            raise ValueError(f"Signal length ({min_len}) must be >= n_taps ({self.n_taps})")
+
         noise = noise[:min_len]
         noisy_signal = noisy_signal[:min_len]
-        N = len(noisy_signal)
+        n = len(noisy_signal)
         print("Starting noise cancellation...")
-        # pbar = tqdm(total=100)
 
         errors = []
         sig = []
         # Sliding window iteration through the signals
-        for i in tqdm(range(N - self.n_taps + 1)):
+        for i in tqdm(range(n - self.n_taps + 1)):
             x_vec = noisy_signal[i:i + self.n_taps]  # Input vector (regressor)
             d = noise[i]  # Desired signal target
             y, e = self.adapt(x_vec, d)
             errors.append(e)
             sig.append(y)
-            # pbar.update(i/(N - self.n_taps + 1))
 
         err_array = np.array(errors)
         sig = np.array(object=sig)

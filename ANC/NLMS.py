@@ -4,29 +4,42 @@ import numpy as np
 from pyroomacoustics.adaptive import NLMS
 
 
-
-def NLMS_calculation(total_sig, noise, fs1, fs2, fs_resample=16000,filter_window=1024,mu=0.1):
+def nlms_calculation(
+    total_sig: np.ndarray,
+    noise: np.ndarray,
+    fs1: int,
+    fs2: int,
+    fs_resample: int = 16000,
+    filter_window: int = 1024,
+    mu: float = 0.1,
+) -> np.ndarray:
     """
-        Applies NLMS adaptive filtering to cancel noise from a primary signal.
+    Applies NLMS and filtering using pyroomacoustics NLMS.
 
-        Mathematical Logic:
-        The filter tries to find a weight vector 'w' such that:
-        total_sig[n] ≈ Filter_Output(noise[n])
-        The result returned (e) is: total_sig[n] - Filter_Output(noise[n])
+    Args:
+        total_sig: Primary signal (signal + noise)
+        noise: Reference noise signal
+        fs1: Sample rate of total_sig
+        fs2: Sample rate of noise
+        fs_resample: Target sample rate (default: 16000 Hz)
+        filter_window: Number of filter taps (default: 1024)
+        mu: Step size parameter (default: 0.1)
 
-        Parameters:
-        -----------
-        total_sig (ndarray): The 'Primary' input. Contains the desired speech + noise.
-        noise (ndarray):     The 'Reference' input. Contains ONLY the noise to be removed.
-        fs1 (int):           Original sampling rate of the total_sig.
-        fs2 (int):           Original sampling rate of the noise reference.
-        fs_resample (int):   Target sampling rate. Default 16kHz is standard for speech processing.
-        filter_window (int): The number of 'taps' (coefficients).
-                             Longer windows handle echoes/reverb better but take longer to converge.
-        mu (float):          The 'Step Size' or Learning Rate.
-                             Higher = Faster learning, but more instability/distortion.
-                             Lower  = Better steady-state quality, but slower to adapt to changes.
-        """
+    Returns:
+        Filtered signal (error signal)
+
+    Raises:
+        ValueError: If inputs are invalid
+    """
+    # Input validation
+    if not isinstance(total_sig, np.ndarray) or not isinstance(noise, np.ndarray):
+        raise ValueError("Both total_sig and noise must be numpy arrays")
+
+    if total_sig.size == 0 or noise.size == 0:
+        raise ValueError("Input signals cannot be empty")
+
+    if filter_window <= 0 or filter_window > len(total_sig):
+        raise ValueError(f"filter_window must be positive and <= signal length ({len(total_sig)})")
 
     # 1. Resampling logic
     if fs1 != fs_resample:
@@ -44,7 +57,7 @@ def NLMS_calculation(total_sig, noise, fs1, fs2, fs_resample=16000,filter_window
     # 3. Synchronize signal lengths
     total_sig, noise = utils.match_sigs(ref=total_sig, sig=noise)
 
-    l = NLMS(length=filter_window,mu=mu)
+    l = NLMS(length=filter_window, mu=mu)
     e = np.zeros(len(total_sig))
 
     # 5. Adaptive filtering loop
@@ -54,3 +67,7 @@ def NLMS_calculation(total_sig, noise, fs1, fs2, fs_resample=16000,filter_window
         e[n] = total_sig[n] - np.dot(l.w, l.x)
 
     return e
+
+
+# Backward-compatible alias for existing callers.
+NLMS_calculation = nlms_calculation
