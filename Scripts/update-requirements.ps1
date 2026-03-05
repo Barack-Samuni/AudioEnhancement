@@ -9,6 +9,8 @@ function Fail($msg) {
 
 # 1) Ensure .venv exists
 $venvPython = ".\.venv\Scripts\python.exe"
+$venvPipChill = ".\.venv\Scripts\pip-chill.exe"
+
 if (-not (Test-Path $venvPython)) {
     Fail "Expected venv at .venv. Run setup.ps1 first to create it."
 }
@@ -34,7 +36,7 @@ $ignore = @(
   "pytest"
 )
 
-$lines = & $venvPython -m pip_chill
+$lines = & $venvPipChill
 $lines = $lines | Where-Object {
     $name = $_.Split('==')[0].Trim()
     -not ($ignore -contains $name)
@@ -43,7 +45,7 @@ $lines = $lines | Where-Object {
 $lines | Sort-Object | Out-File -Encoding utf8 "requirements.in"
 
 # 5) Compile pinned deps -> requirements.txt
-& $venvPython -m piptools compile requirements.in -o requirements.txt --quiet
+& $venvPython -m piptools compile --strip-extras requirements.in -o requirements.txt --quiet 
 
 # 6) Stage both files (so pre-commit includes them)
 git add requirements.in requirements.txt
