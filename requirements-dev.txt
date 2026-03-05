@@ -1,0 +1,4 @@
+pre-commit
+pip-tools
+pip-chill
+pytest
