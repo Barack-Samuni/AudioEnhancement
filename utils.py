@@ -10,10 +10,7 @@ from typing import Tuple, Optional, Literal
 # EPSILON: constant to prevent division by 0
 WIN_DUR = 0.064
 HOP_FRAC = 0.2
-EPSILON = 1e-10
-
-# 2. GCC-PHAT Constants
-GCC_PHAT_STABILITY_EPSILON = 1e-15  # Prevents division by zero in GCC-PHAT normalization
+EPSILON = 1e-15
 
 # Utility functions
 
@@ -254,10 +251,7 @@ def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
 
     # Normalize by magnitude (PHAT): This removes amplitude influence and
     # focuses solely on the phase difference to get a sharp correlation peak.
-    cc = np.fft.irfft(
-        cross_power / (np.abs(cross_power) + GCC_PHAT_STABILITY_EPSILON),
-        n=(interp * n),
-    )
+    cc = np.fft.irfft(cross_power / (np.abs(cross_power) + EPSILON), n=(interp * n))
 
     # Determine the search range for the delay
     max_shift = int(interp * n / 2)
