@@ -45,7 +45,7 @@ $lines = $lines | Where-Object {
 $lines | Sort-Object | Out-File -Encoding utf8 "requirements.in"
 
 # 5) Compile pinned deps -> requirements.txt
-& $venvPython -m piptools compile --strip-extras requirements.in -o requirements.txt --quiet 
+& $venvPython -m piptools compile --strip-extras requirements.in -o requirements.txt --quiet --extra-index-url https://download.pytorch.org/whl/cu130
 
 # 6) Stage both files (so pre-commit includes them)
 git add requirements.in requirements.txt
