@@ -55,4 +55,4 @@ jobs:
       - name: Run tests
         shell: pwsh
         run:  |
-          python -m pytest -q --no-tests=pass -vv -ra -W default
+          .\.venv\Scripts\python.exe -m pytest -q --no-tests=pass -vv -ra -W default
