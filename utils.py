@@ -9,7 +9,7 @@ import torch
 # EPSILON: constant to prevent division by 0
 WIN_DUR = 0.064
 HOP_FRAC = 0.2
-EPSILON = 1e-10
+EPSILON = 1e-15
 
 
 # 2. Utility Functions
@@ -144,8 +144,8 @@ def match_sigs(ref: np.ndarray, sig: np.ndarray):
 
 
 def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
-    '''
-    Generalized Cross Correlation with Phase Transform (GCC-PHAT).
+    """
+        Generalized Cross Correlation with Phase Transform (GCC-PHAT).
 
     LOGIC:
     - sig: The primary/trusted signal (Stationary reference).
@@ -154,8 +154,7 @@ def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
     This function calculates the time delay 'tau' required to align 'refsig' to 'sig'.
     By applying 'tau' to 'refsig', we ensure that the noise in both channels is
     perfectly in-phase before adaptive filtering.
-    '''
-
+    """
     # Ensure data is in NumPy format for FFT processing
     if torch.is_tensor(sig):
         sig = sig.numpy()
@@ -174,7 +173,7 @@ def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
 
     # Normalize by magnitude (PHAT): This removes amplitude influence and
     # focuses solely on the phase difference to get a sharp correlation peak.
-    cc = np.fft.irfft(R / (np.abs(R) + 1e-15), n=(interp * n))
+    cc = np.fft.irfft(R / (np.abs(R) + EPSILON), n=(interp * n))
 
     # Determine the search range for the delay
     max_shift = int(interp * n / 2)

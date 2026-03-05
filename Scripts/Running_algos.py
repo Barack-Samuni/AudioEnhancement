@@ -69,7 +69,7 @@ def main():
             ioloader.save_sound(rf"{project_root}\corr_noise.wav", resampled_noise, fs_resample)
             ioloader.save_sound(rf"{project_root}\corr_sig.wav", resampled_sig, fs_resample)
 
-        resampled_noise = distortion_ir(resampled_noise)
+        resampled_noise = distortion_ir(resampled_noise) #NO MANDOTRY- APPLYS EXPONENTIAL TF TO THE NOISE AND NORMALIZE
         # Analyze initial coherence between noise and signal before filtering
         ut.coherence_of_sigs(resampled_sig, resampled_noise, fs_resample)
 

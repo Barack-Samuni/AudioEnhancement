@@ -168,7 +168,7 @@ def process_nkf(sig:np.ndarray, noise:np.ndarray,sr:int=16000):
     for f in model.parameters():
         numparams += f.numel()
     print('Total number of parameters: {:,}'.format(numparams))
-    model.load_state_dict(torch.load(config.PATH), strict=True)
+    model.load_state_dict(torch.load(config.PATH), strict=True, weights_only=True)
     model.eval()
 
     noise = torch.from_numpy(noise).float()
