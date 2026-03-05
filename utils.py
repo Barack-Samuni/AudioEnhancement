@@ -1,8 +1,9 @@
+from typing import Literal, Optional, Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.signal as sg
 import torch
-from typing import Tuple, Optional, Literal
 
 # 1. Spectral Analysis Parameters
 # WIN_DUR: The length of the analysis window in seconds (64ms)
@@ -15,9 +16,22 @@ EPSILON = 1e-15
 # Utility functions
 
 FilterType = Literal[
-    "bandpass", "lowpass", "highpass", "bandstop",
-    "band", "pass", "bp", "bands", "stop", "bs",
-    "low", "lp", "l", "high", "hp", "h",
+    "bandpass",
+    "lowpass",
+    "highpass",
+    "bandstop",
+    "band",
+    "pass",
+    "bp",
+    "bands",
+    "stop",
+    "bs",
+    "low",
+    "lp",
+    "l",
+    "high",
+    "hp",
+    "h",
 ]
 
 
@@ -72,7 +86,7 @@ def resample_fs(sig: np.ndarray, fs_old: int, fs_new: int) -> Tuple[np.ndarray, 
     # If the new rate is lower, we must remove frequencies above the new Nyquist limit
     if fs_new < fs_old:
         fn = fs_new / 2
-        sig = butter_filter(data=sig, cutoff=fn, fs=fs_old, btype='low')
+        sig = butter_filter(data=sig, cutoff=fn, fs=fs_old, btype="low")
 
     num_samples = int(len(sig) * fs_new / fs_old)
     # Perform resampling using Fourier method (high quality)
@@ -121,8 +135,15 @@ def stft_params_calc(fs: int) -> Tuple[int, int]:
     return n_overlap, window_size
 
 
-def plot_stft(stft: np.ndarray, t: Optional[np.ndarray] = None, f: Optional[np.ndarray] = None,
-              mode: str = "dB", vmin: float = -90, vmax: float = -20, title: str = "") -> None:
+def plot_stft(
+    stft: np.ndarray,
+    t: Optional[np.ndarray] = None,
+    f: Optional[np.ndarray] = None,
+    mode: str = "dB",
+    vmin: float = -90,
+    vmax: float = -20,
+    title: str = "",
+) -> None:
     """
     Plots a spectrogram heatmap.
 
@@ -149,16 +170,16 @@ def plot_stft(stft: np.ndarray, t: Optional[np.ndarray] = None, f: Optional[np.n
 
     ax.imshow(
         plot_data,
-        origin='lower',
-        aspect='auto',
-        cmap='inferno',
+        origin="lower",
+        aspect="auto",
+        cmap="inferno",
         vmin=vmin if mode == "log" else None,
         vmax=vmax if mode == "log" else None,
-        extent=extent
+        extent=extent,
     )
 
-    ax.set_ylabel('Frequency' + (' (Hz)' if f is not None else ' (Index)'))
-    ax.set_xlabel('Time' + (' (sec)' if t is not None else ' (Index)'))
+    ax.set_ylabel("Frequency" + (" (Hz)" if f is not None else " (Index)"))
+    ax.set_xlabel("Time" + (" (sec)" if t is not None else " (Index)"))
     ax.set_title(f"STFT {title} , ({mode.capitalize()})")
     plt.show()
 
@@ -178,8 +199,8 @@ def coherence_of_sigs(sig: np.ndarray, noise: np.ndarray, fs: int) -> None:
     n_overlap, window_size = stft_params_calc(fs)
     f, cxy = sg.coherence(sig, noise, fs=fs, noverlap=n_overlap, nperseg=window_size)
     plt.plot(f, cxy)
-    plt.xlabel('frequency [Hz]')
-    plt.ylabel('Coherence')
+    plt.xlabel("frequency [Hz]")
+    plt.ylabel("Coherence")
     plt.show(block=True)
 
 
@@ -198,10 +219,10 @@ def match_sigs(ref: np.ndarray, sig: np.ndarray) -> Tuple[np.ndarray, np.ndarray
 
     if diff > 0:
         # If 'sig' is shorter, add zeros at the end
-        sig = np.pad(sig, (0, diff), mode='constant')
+        sig = np.pad(sig, (0, diff), mode="constant")
     elif diff < 0:
         # If 'sig' is longer, cut the extra samples
-        sig = sig[:len(ref)]
+        sig = sig[: len(ref)]
 
     return ref, sig
 
@@ -259,7 +280,7 @@ def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
         max_shift = np.minimum(int(interp * fs * max_tau), max_shift)
 
     # Center the correlation result so zero-lag is at the middle
-    cc = np.concatenate((cc[-max_shift:], cc[:max_shift + 1]))
+    cc = np.concatenate((cc[-max_shift:], cc[: max_shift + 1]))
 
     # Find the peak index: This tells us how much 'refsig' is offset from 'sig'
     shift = np.argmax(np.abs(cc)) - max_shift
