@@ -2,7 +2,7 @@
 target-version = "py310"
 line-length = 120
 
-# PEP8-ish checks + correctness + import sorting
+[tool.ruff.lint]
 select = ["E", "W", "F", "I"]
 ignore = []
 

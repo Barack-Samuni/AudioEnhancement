@@ -62,12 +62,16 @@ pytest
     # --- Install pre-commit hooks ---
     Write-Host "`nInstalling pre-commit hooks..." -ForegroundColor Cyan
     & $venvPython -m pre_commit install
+    & $venvPython -m pre_commit autoupdate
+
 
     Write-Host ""
     Write-Host "✅ Setup complete." -ForegroundColor Green
     Write-Host "To activate in an existing PowerShell window:" -ForegroundColor Green
     Write-Host "  .\.venv\Scripts\Activate.ps1"
     Write-Host ""
+    Write-Host "`nRunning pre-commit on all files..." -ForegroundColor Cyan
+    & $venvPython -m pre_commit run --all-files
     Pause-And-Exit 0
 }
 catch {
