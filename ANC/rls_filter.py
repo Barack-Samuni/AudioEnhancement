@@ -77,15 +77,27 @@ class RLSFilter:
 
         Returns:
             tuple: (processed signal array, error signal array).
+
+        Raises:
+            ValueError: If inputs are invalid or signal too short for filter
         """
-        # wraps the whole process of filtering the signal
+        # Input validation
+        if not isinstance(noisy_signal, np.ndarray) or not isinstance(noise, np.ndarray):
+            raise ValueError("Both noisy_signal and noise must be numpy arrays")
+
+        if noisy_signal.size == 0 or noise.size == 0:
+            raise ValueError("Input signals cannot be empty")
+
         # Ensure both have the same length and shape
         min_len = min(len(noisy_signal), len(noise))
+
+        if min_len < self.n_taps:
+            raise ValueError(f"Signal length ({min_len}) must be >= n_taps ({self.n_taps})")
+
         noise = noise[:min_len]
         noisy_signal = noisy_signal[:min_len]
         N = len(noisy_signal)
         print("Starting noise cancellation...")
-        # pbar = tqdm(total=100)
 
         errors = []
         sig = []
@@ -96,7 +108,6 @@ class RLSFilter:
             y, e = self.adapt(x_vec, d)
             errors.append(e)
             sig.append(y)
-            # pbar.update(i/(N - self.n_taps + 1))
 
         err_array = np.array(errors)
         sig = np.array(object=sig)

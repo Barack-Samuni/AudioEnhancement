@@ -1,4 +1,4 @@
-'''
+"""
 Tencent is pleased to support the open source community by making NKF-AEC available.
 
 Copyright (C) 2022 THL A29 Limited, a Tencent company. All rights reserved.
@@ -12,7 +12,7 @@ Unless required by applicable law or agreed to in writing, software distributed
 under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
-'''
+"""
 import torch
 import torch.nn as nn
 from utils import gcc_phat
@@ -161,14 +161,29 @@ def process_nkf(sig:np.ndarray, noise:np.ndarray,sr:int=16000):
         Raises:
             IndexError: If the input signal and noise arrays have different lengths.
         """
+    from pathlib import Path
+
     if len(sig)!=len(noise):
         raise IndexError("Both arrays must be at the same sizes")
+
+    # Use config.PATH for model location
+    model_path = Path(config.PATH)
+
+    # Check if model file exists
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model file not found at: {model_path}")
+
     model = NKF(L=4)
     numparams = 0
     for f in model.parameters():
         numparams += f.numel()
     print('Total number of parameters: {:,}'.format(numparams))
-    model.load_state_dict(torch.load(config.PATH), strict=True)
+
+    try:
+        model.load_state_dict(torch.load(model_path, weights_only=True), strict=True)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load model weights: {e}")
+
     model.eval()
 
     noise = torch.from_numpy(noise).float()
