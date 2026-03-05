@@ -143,7 +143,23 @@ class NKF(nn.Module):
 
 
 def process_nkf(sig:np.ndarray, noise:np.ndarray,sr:int=16000):
-    #assumes that both signals are at the same sample rate- prefered nkf sample rate 16KHZ
+    """
+        Processes audio using a Neural Kalman Filter (NKF) for noise cancellation.
+
+        This function initializes the NKF model, loads pre-trained weights from a
+        specific local path, and performs a forward pass to estimate the clean signal.
+
+        Args:
+            sig (np.ndarray): The primary noisy signal array.
+            noise (np.ndarray): The reference noise signal array.
+            sr (int, optional): The sampling rate of the signals. Defaults to 16,000Hz.
+
+        Returns:
+            torch.Tensor: The estimated clean signal (s_hat) produced by the model.
+
+        Raises:
+            IndexError: If the input signal and noise arrays have different lengths.
+        """
     if len(sig)!=len(noise):
         raise IndexError("Both arrays must be at the same sizes")
     model = NKF(L=4)
