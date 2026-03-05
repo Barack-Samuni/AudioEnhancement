@@ -1,9 +1,9 @@
-from typing import Any
 
 import numpy as np
 from datetime import datetime
-import IO as ioloader
+import IO as IO_LOADER
 import torch
+from typing import Union
 from ANC.NLMS import NLMS_calculation
 from ANC.nkf import process_nkf
 from ANC.rls_filter import RLSFilter
@@ -21,7 +21,7 @@ GCC_PHAT_ALIGNMENT_SECONDS = 10
 ALIGNMENT_SAFETY_BUFFER = 0.001  # seconds
 
 
-def show_spectrogram(sig, fs, title="Spectrogram"):
+def show_spectrogram(sig: np.ndarray, fs: int, title: str = "Spectrogram") -> None:
     """
     Computes and displays the STFT of a signal in dB scale.
     Uses the utility functions from utils.py.
@@ -33,12 +33,9 @@ def show_spectrogram(sig, fs, title="Spectrogram"):
     # 3. Use your utility plot function
     # We pass the dB data and specify mode="linear" to plot_stft
     # because we already converted it to dB in the calculation step.
-    ut.plot_stft(stft_db, t=t, f=f, mode="",title=title)
+    ut.plot_stft(stft_db, t=t, f=f, mode="", title=title)
 
-
-
-
-def main():
+def main() -> None:
     # 1. Select the files and initialize parameters
     alignment = False  # Flag to skip manual alignment if data is already correlated
     fs_resample, iteration, noise_files, project_root, signal_files = load_data()
@@ -46,12 +43,12 @@ def main():
     # Iterate through pairs of signal and noise reference files
     for s_path, n_path in zip(signal_files, noise_files):
         # Load audio data from selected paths
-        sig, fs_sig = ioloader.load_sound(s_path)
-        noise, fs_noise = ioloader.load_sound(n_path)
+        sig, _fs_sig = IO_LOADER.load_sound(s_path)
+        noise, fs_noise = IO_LOADER.load_sound(n_path)
 
         # Ensure signals are mono for processing
-        sig = ioloader.stereo_to_mono(sig)
-        noise = ioloader.stereo_to_mono(noise)
+        sig = IO_LOADER.stereo_to_mono(sig)
+        noise = IO_LOADER.stereo_to_mono(noise)
 
         # Resample both signals to the target processing frequency (usually 16kHz)
         resampled_sig, _ = ut.resample_fs(sig, fs_noise, fs_resample)
@@ -63,12 +60,15 @@ def main():
             alignment_window = fs_resample * GCC_PHAT_ALIGNMENT_SECONDS
             tau = ut.gcc_phat(resampled_sig[:alignment_window], resampled_noise[:alignment_window],
                               fs=fs_resample, interp=1)
-            tau = max(0, int((tau - ALIGNMENT_SAFETY_BUFFER) * fs_resample))  # Convert to samples with safety buffer
+            tau = max(0, int((tau - ALIGNMENT_SAFETY_BUFFER) * fs_resample))  # Convert to sample count
 
             # Use torch to shift the noise signal by padding with zeros
             resampled_sig = torch.from_numpy(resampled_sig).float()
             resampled_noise = torch.from_numpy(resampled_noise).float()
-            resampled_noise = torch.cat([torch.zeros(tau), resampled_noise])[:resampled_sig.shape[-1]]
+            tau_samples = int(tau)
+            resampled_noise = torch.cat(
+                [torch.zeros(int(tau_samples)), resampled_noise]
+            )[: resampled_sig.shape[-1]]
 
             # Convert back to numpy and ensure lengths match exactly
             resampled_sig = resampled_sig.numpy()
@@ -76,8 +76,8 @@ def main():
             resampled_noise, resampled_sig = ut.match_sigs(resampled_noise, resampled_sig)
 
             # Save the newly aligned/correlated signals
-            ioloader.save_sound(rf"{project_root}\corr_noise.wav", resampled_noise, fs_resample)
-            ioloader.save_sound(rf"{project_root}\corr_sig.wav", resampled_sig, fs_resample)
+            IO_LOADER.save_sound(rf"{project_root}\corr_noise.wav", resampled_noise, fs_resample)
+            IO_LOADER.save_sound(rf"{project_root}\corr_sig.wav", resampled_sig, fs_resample)
 
         resampled_noise = distortion_ir(resampled_noise)
         # Analyze initial coherence between noise and signal before filtering
@@ -124,7 +124,7 @@ def distortion_ir(noise: np.ndarray) -> np.ndarray:
     return noise
 
 
-def get_results_dir(root_path):
+def get_results_dir(root_path: Path) -> Path:
     """
     Creates and returns a directory path for results based on the current date.
     """
@@ -141,15 +141,15 @@ def get_results_dir(root_path):
     return daily_dir
 
 
-def load_data():
+def load_data() -> tuple[int, int, list[str], Path, list[str]]:
     """
     Handles file selection via UI and prepares project variables.
     """
-    print("Please select the TOTAL signals (Signal + Noise):")
-    signal_files = ioloader.select_audio_files()
+    print("Please select the TOTAL signals (signal + noise):")
+    signal_files = IO_LOADER.select_audio_files()
 
     print("Please select the NOISE reference signals:")
-    noise_files = ioloader.select_audio_files()
+    noise_files = IO_LOADER.select_audio_files()
 
     project_root = Path(signal_files[0]).parent
     iteration = 0
@@ -161,7 +161,14 @@ def load_data():
     return fs_resample, iteration, noise_files, project_root, signal_files
 
 
-def save_and_analyze_result(result, noise, fs, results_dir, filename, title):
+def save_and_analyze_result(
+    result: Union[np.ndarray, torch.Tensor],
+    noise: np.ndarray,
+    fs: int,
+    results_dir: Path,
+    filename: str,
+    title: str,
+) -> None:
     """
     Helper function to save, visualize, and analyze ANC results.
 
@@ -173,9 +180,12 @@ def save_and_analyze_result(result, noise, fs, results_dir, filename, title):
         filename: Output filename
         title: Title for spectrogram
     """
+    if torch.is_tensor(result):
+        result = result.detach().cpu().numpy()
+
     show_spectrogram(result, fs, title)
     output_path = results_dir / filename
-    ioloader.save_sound(str(output_path), result, fs)
+    IO_LOADER.save_sound(str(output_path), result, fs)
     ut.coherence_of_sigs(result, noise, fs)
 
 
@@ -185,24 +195,45 @@ def process_ancs(fs_resample: int, iteration: int, project_root: Path, resampled
     Runs the noise cancellation pipeline using different algorithms and saves results.
     """
     # Show input signals
-    show_spectrogram(resampled_noise, fs_resample, "noise mic no sensitive")
-    show_spectrogram(resampled_sig, fs_resample, "sig + noise before enhancement mic sensitive")
+    show_spectrogram(resampled_noise, fs_resample, "Noise microphone (less sensitive)")
+    show_spectrogram(resampled_sig, fs_resample, "Signal + noise before enhancement (sensitive mic)")
 
     results_dir = get_results_dir(project_root)
 
     # --- NLMS Algorithm ---
     nlms_result = NLMS_calculation(total_sig=resampled_sig, noise=resampled_noise, fs1=fs_resample, fs2=fs_resample,
                                    fs_resample=DEFAULT_SAMPLE_RATE, filter_window=NLMS_FILTER_WINDOW, mu=NLMS_MU)
-    save_and_analyze_result(nlms_result, resampled_noise, fs_resample, results_dir, f"NLMS{iteration}.wav", "sig NLMS only")
+    save_and_analyze_result(
+        nlms_result,
+        resampled_noise,
+        fs_resample,
+        results_dir,
+        f"NLMS{iteration}.wav",
+        "Signal after NLMS only",
+    )
 
     # --- NKF (Neural Kalman Filter) ---
     nkf_result = process_nkf(sig=resampled_sig, noise=resampled_noise)
-    save_and_analyze_result(nkf_result, resampled_noise, fs_resample, results_dir, f"nkf{iteration}.wav", "sig nkf only")
+    save_and_analyze_result(
+        nkf_result,
+        resampled_noise,
+        fs_resample,
+        results_dir,
+        f"nkf{iteration}.wav",
+        "Signal after NKF only",
+    )
 
     # --- RLS (Recursive Least Squares) ---
     rls_flit = RLSFilter(n_taps=RLS_N_TAPS)
     _, rls_res = rls_flit.process(noisy_signal=resampled_sig, noise=resampled_noise)
-    save_and_analyze_result(rls_res, resampled_noise, fs_resample, results_dir, f"RLS{iteration}.wav", "sig rls only")
+    save_and_analyze_result(
+        rls_res,
+        resampled_noise,
+        fs_resample,
+        results_dir,
+        f"RLS{iteration}.wav",
+        "Signal after RLS only",
+    )
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
 import soundfile as sf
-import glob
 import os
 import numpy as np
 import tkinter as tk
 from tkinter import filedialog
 from typing import List, Tuple
+
 
 def select_audio_files() -> List[str]:
     """
@@ -35,7 +35,7 @@ def load_sound(filename: str) -> Tuple[np.ndarray, int]:
         Tuple: (signal data, sample rate)
 
     Raises:
-        FileNotFoundError: If file doesn't exist
+        FileNotFoundError: If the file does not exist
         RuntimeError: If file cannot be read
     """
     if not os.path.exists(filename):
@@ -45,7 +45,8 @@ def load_sound(filename: str) -> Tuple[np.ndarray, int]:
         sig, fs = sf.read(filename)
         return sig, fs
     except Exception as e:
-        raise RuntimeError(f"Failed to read audio file {filename}: {e}")
+        raise RuntimeError(f"Failed to read audio file {filename}: {e}") from e
+
 
 def save_sound(filename: str, data: np.ndarray, fs: int) -> None:
     """
@@ -63,7 +64,8 @@ def save_sound(filename: str, data: np.ndarray, fs: int) -> None:
         sf.write(filename, data, fs)
         print(f"Output saved to: {filename}")
     except Exception as e:
-        raise RuntimeError(f"Failed to save audio file {filename}: {e}")
+        raise RuntimeError(f"Failed to save audio file {filename}: {e}") from e
+
 
 def stereo_to_mono(data: np.ndarray) -> np.ndarray:
     """
@@ -75,6 +77,6 @@ def stereo_to_mono(data: np.ndarray) -> np.ndarray:
     Returns:
         Mono audio signal array
     """
-    if len(data.shape) > 1:
+    if data.ndim > 1:
         data = np.mean(data, axis=1)
     return data

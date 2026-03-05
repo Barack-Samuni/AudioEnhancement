@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.signal as sg
 import torch
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Literal
 
 # 1. Spectral Analysis Parameters
 # WIN_DUR: The length of the analysis window in seconds (64ms)
@@ -15,10 +15,22 @@ EPSILON = 1e-10
 # 2. GCC-PHAT Constants
 GCC_PHAT_STABILITY_EPSILON = 1e-15  # Prevents division by zero in GCC-PHAT normalization
 
+# Utility functions
 
-# 2. Utility Functions
+FilterType = Literal[
+    "bandpass", "lowpass", "highpass", "bandstop",
+    "band", "pass", "bp", "bands", "stop", "bs",
+    "low", "lp", "l", "high", "hp", "h",
+]
 
-def butter_filter(data: np.ndarray, cutoff: float, fs: int, btype: str, order: int = 5) -> np.ndarray:
+
+def butter_filter(
+    data: np.ndarray,
+    cutoff: float,
+    fs: int,
+    btype: FilterType,
+    order: int = 5,
+) -> np.ndarray:
     """
     Applies a Butterworth filter using zero-phase filtering to preserve timing.
 
@@ -89,12 +101,12 @@ def calc_stft(sig: np.ndarray, fs: int, mode: str = "linear") -> Tuple[np.ndarra
 
     if mode == "linear":
         return f1, t1, stft_abs
-    elif mode == "dB":
+    if mode == "dB":
         # Convert to logarithmic scale (Decibels) for better visualization of quiet sounds
         return f1, t1, 20 * np.log10(stft_abs + EPSILON)
-    else:
-        # Return complex numbers for processing/reconstruction
-        return f1, t1, sig_stft
+
+    # Return complex numbers for processing/reconstruction
+    return f1, t1, sig_stft
 
 
 def stft_params_calc(fs: int) -> Tuple[int, int]:
@@ -126,7 +138,7 @@ def plot_stft(stft: np.ndarray, t: Optional[np.ndarray] = None, f: Optional[np.n
         vmax: Maximum value for color scale
         title: Plot title
     """
-    fig, ax = plt.subplots(figsize=(10, 4))
+    _, ax = plt.subplots(figsize=(10, 4))
     if mode == "dB":
         plot_data = 20 * np.log10(stft + EPSILON)
     else:
@@ -138,7 +150,7 @@ def plot_stft(stft: np.ndarray, t: Optional[np.ndarray] = None, f: Optional[np.n
     else:
         extent = None
 
-    img = ax.imshow(
+    ax.imshow(
         plot_data,
         origin='lower',
         aspect='auto',
@@ -167,8 +179,8 @@ def coherence_of_sigs(sig: np.ndarray, noise: np.ndarray, fs: int) -> None:
         fs: Sampling rate
     """
     n_overlap, window_size = stft_params_calc(fs)
-    f, Cxy = sg.coherence(sig, noise, fs=fs, noverlap=n_overlap, nperseg=window_size)
-    plt.plot(f, Cxy)
+    f, cxy = sg.coherence(sig, noise, fs=fs, noverlap=n_overlap, nperseg=window_size)
+    plt.plot(f, cxy)
     plt.xlabel('frequency [Hz]')
     plt.ylabel('Coherence')
     plt.show(block=True)
@@ -234,19 +246,22 @@ def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
     n = sig.shape[0] + refsig.shape[0]
 
     # Convert signals to frequency domain
-    SIG = np.fft.rfft(sig, n=n)
-    REFSIG = np.fft.rfft(refsig, n=n)
+    sig_fft = np.fft.rfft(sig, n=n)
+    refsig_fft = np.fft.rfft(refsig, n=n)
 
     # Calculate the cross-power spectrum (correlation in frequency)
-    R = SIG * np.conj(REFSIG)
+    cross_power = sig_fft * np.conj(refsig_fft)
 
     # Normalize by magnitude (PHAT): This removes amplitude influence and
     # focuses solely on the phase difference to get a sharp correlation peak.
-    cc = np.fft.irfft(R / (np.abs(R) + GCC_PHAT_STABILITY_EPSILON), n=(interp * n))
+    cc = np.fft.irfft(
+        cross_power / (np.abs(cross_power) + GCC_PHAT_STABILITY_EPSILON),
+        n=(interp * n),
+    )
 
     # Determine the search range for the delay
     max_shift = int(interp * n / 2)
-    if max_tau:
+    if max_tau is not None:
         max_shift = np.minimum(int(interp * fs * max_tau), max_shift)
 
     # Center the correlation result so zero-lag is at the middle

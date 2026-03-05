@@ -4,8 +4,15 @@ import numpy as np
 from pyroomacoustics.adaptive import NLMS
 
 
-
-def NLMS_calculation(total_sig, noise, fs1, fs2, fs_resample=16000,filter_window=1024,mu=0.1):
+def nlms_calculation(
+    total_sig: np.ndarray,
+    noise: np.ndarray,
+    fs1: int,
+    fs2: int,
+    fs_resample: int = 16000,
+    filter_window: int = 1024,
+    mu: float = 0.1,
+) -> np.ndarray:
     """
     Applies NLMS and filtering using pyroomacoustics NLMS.
 
@@ -50,7 +57,7 @@ def NLMS_calculation(total_sig, noise, fs1, fs2, fs_resample=16000,filter_window
     # 3. Synchronize signal lengths
     total_sig, noise = utils.match_sigs(ref=total_sig, sig=noise)
 
-    l = NLMS(length=filter_window,mu=mu)
+    l = NLMS(length=filter_window, mu=mu)
     e = np.zeros(len(total_sig))
 
     # 5. Adaptive filtering loop
@@ -60,3 +67,7 @@ def NLMS_calculation(total_sig, noise, fs1, fs2, fs_resample=16000,filter_window
         e[n] = total_sig[n] - np.dot(l.w, l.x)
 
     return e
+
+
+# Backward-compatible alias for existing callers.
+NLMS_calculation = nlms_calculation
