@@ -6,11 +6,11 @@ import numpy as np
 import scipy.signal as sg
 import torch
 
-import IO as IO_LOADER
-import utils as ut
 from ANC.nkf import process_nkf
 from ANC.NLMS import NLMS_calculation
 from ANC.rls_filter import RLSFilter
+from src import IO as IO_LOADER
+from src import utils as ut
 
 # Constants
 DEFAULT_SAMPLE_RATE = 16000

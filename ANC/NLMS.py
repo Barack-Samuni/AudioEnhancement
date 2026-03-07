@@ -1,8 +1,8 @@
 import numpy as np
 from pyroomacoustics.adaptive import NLMS
 
-import utils
-from utils import resample_fs
+from src import utils
+from src.utils import resample_fs
 
 
 def nlms_calculation(
