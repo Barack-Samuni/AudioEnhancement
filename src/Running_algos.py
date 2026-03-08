@@ -54,7 +54,7 @@ def main() -> None:
         resampled_noise, _ = ut.resample_fs(noise, fs_noise, fs_resample)
 
         # Perform Time Alignment if the alignment flag is False
-        if not alignment:
+        if not alignment:  # TO DO correlation issue - fixing required
             # Estimate delay using GCC-PHAT cross-correlation
             alignment_window = fs_resample * GCC_PHAT_ALIGNMENT_SECONDS
             tau = ut.gcc_phat(
