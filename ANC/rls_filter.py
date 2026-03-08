@@ -26,8 +26,7 @@ class RLSFilter:
         self.w = np.zeros(n_taps)  # Filter weights initialization
         self.P = (1.0 / delta) * np.eye(n_taps)  # Inverse correlation matrix initialization
 
-    def adapt(self, x: np.ndarray, d: float) -> tuple[ndarray[tuple[int, ...], dtype[Any]], ndarray[
-        tuple[int, ...], dtype[number[Any, int | float | complex] | Any]]]:
+    def adapt(self, x: np.ndarray, d: float):
         """
         Updates filter weights based on a single input vector and desired output.
 
@@ -113,5 +112,5 @@ class RLSFilter:
             sig.append(y)
 
         err_array = np.array(errors)
-        sig = np.array(object=sig)
-        return sig, err_array
+        noise_estimation = np.array(object=sig)
+        return noise_estimation, err_array

@@ -225,16 +225,23 @@ def process_ancs(fs_resample: int, iteration: int, project_root: Path, resampled
 
     # --- RLS (Recursive Least Squares) ---
     rls_flit = RLSFilter(n_taps=RLS_N_TAPS)
-    _, rls_res = rls_flit.process(noisy_signal=resampled_sig, noise=resampled_noise)
+    noise_estimation, rls_error = rls_flit.process(noisy_signal=resampled_sig, noise=resampled_noise)
     save_and_analyze_result(
-        rls_res,
+        rls_error,
         resampled_noise,
         fs_resample,
         results_dir,
-        f"RLS{iteration}.wav",
-        "Signal after RLS only",
+        f"error_RLS{iteration}.wav",
+        "error after RLS only",
     )
-
+    save_and_analyze_result(
+        noise_estimation,
+        resampled_noise,
+        fs_resample,
+        results_dir,
+        f"sig_RLS{iteration}.wav",
+        "noise estimation after RLS only",
+    )
 
 if __name__ == "__main__":
     main()
