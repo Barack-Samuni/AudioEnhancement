@@ -13,20 +13,37 @@ under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
 CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 """
+
+from typing import Optional
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import Optional
 
 
 class ComplexGRU(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers=1, batch_first=True, bias=True, dropout=0,
-                 bidirectional=False):
+    def __init__(
+        self, input_size, hidden_size, num_layers=1, batch_first=True, bias=True, dropout=0, bidirectional=False
+    ):
         super().__init__()
-        self.gru_r = nn.GRU(input_size, hidden_size, num_layers, bias=bias, batch_first=batch_first,
-                            dropout=dropout, bidirectional=bidirectional)
-        self.gru_i = nn.GRU(input_size, hidden_size, num_layers, bias=bias, batch_first=batch_first,
-                            dropout=dropout, bidirectional=bidirectional)
+        self.gru_r = nn.GRU(
+            input_size,
+            hidden_size,
+            num_layers,
+            bias=bias,
+            batch_first=batch_first,
+            dropout=dropout,
+            bidirectional=bidirectional,
+        )
+        self.gru_i = nn.GRU(
+            input_size,
+            hidden_size,
+            num_layers,
+            bias=bias,
+            batch_first=batch_first,
+            dropout=dropout,
+            bidirectional=bidirectional,
+        )
 
     def forward(
         self,
@@ -66,14 +83,14 @@ class ComplexPReLU(nn.Module):
 
 
 class KGNet(nn.Module):
-    def __init__(self, l, fc_dim, rnn_layers, rnn_dim, **kwargs):
+    def __init__(self, layers, fc_dim, rnn_layers, rnn_dim, **kwargs):
         super().__init__()
         if "L" in kwargs:
-            l = kwargs.pop("L")
+            layers = kwargs.pop("L")
         if kwargs:
             raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs.keys())}")
 
-        self.L: int = int(l)
+        self.L: int = int(layers)
         self.rnn_layers: int = int(rnn_layers)
         self.rnn_dim: int = int(rnn_dim)
         self.h_rr = None
@@ -81,17 +98,12 @@ class KGNet(nn.Module):
         self.h_ri = None
         self.h_ii = None
 
-        self.fc_in = nn.Sequential(
-            ComplexDense(2 * self.L + 1, fc_dim, bias=True),
-            ComplexPReLU()
-        )
+        self.fc_in = nn.Sequential(ComplexDense(2 * self.L + 1, fc_dim, bias=True), ComplexPReLU())
 
         self.complex_gru = ComplexGRU(fc_dim, rnn_dim, rnn_layers, bidirectional=False)
 
         self.fc_out = nn.Sequential(
-            ComplexDense(rnn_dim, fc_dim, bias=True),
-            ComplexPReLU(),
-            ComplexDense(fc_dim, self.L, bias=True)
+            ComplexDense(rnn_dim, fc_dim, bias=True), ComplexPReLU(), ComplexDense(fc_dim, self.L, bias=True)
         )
 
     def init_hidden(self, batch_size: int, device: torch.device) -> None:
@@ -117,14 +129,14 @@ class KGNet(nn.Module):
 
 
 class NKF(nn.Module):
-    def __init__(self, l=4, **kwargs):
+    def __init__(self, layers=4, **kwargs):
         super().__init__()
         if "L" in kwargs:
-            l = kwargs.pop("L")
+            layers = kwargs.pop("L")
         if kwargs:
             raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs.keys())}")
 
-        self.L: int = int(l)
+        self.L: int = int(layers)
         self.kg_net = KGNet(self.L, fc_dim=18, rnn_layers=1, rnn_dim=18)
         self.stft = lambda x: torch.stft(
             x,
@@ -172,12 +184,12 @@ class NKF(nn.Module):
                             dtype=torch.complex64,
                             device=device,
                         ),
-                        x[:, :frame_idx + 1],
+                        x[:, : frame_idx + 1],
                     ],
                     dim=-1,
                 )
             else:
-                xt = x[:, frame_idx - self.L + 1:frame_idx + 1]
+                xt = x[:, frame_idx - self.L + 1 : frame_idx + 1]
             if xt.abs().mean() < 1e-5:
                 continue
 
@@ -198,25 +210,25 @@ class NKF(nn.Module):
 
 def process_nkf(sig: np.ndarray, noise: np.ndarray, sr: int = 16000):
     """
-        Processes audio using a Neural Kalman Filter (NKF) for noise cancellation.
+    Processes audio using a Neural Kalman Filter (NKF) for noise cancellation.
 
-        This function initializes the NKF model, loads pre-trained weights from a
-        specific local path, and performs a forward pass to estimate the clean signal.
+    This function initializes the NKF model, loads pre-trained weights from a
+    specific local path, and performs a forward pass to estimate the clean signal.
 
-        Args:
-            sig (np.ndarray): The primary noisy signal array.
-            noise (np.ndarray): The reference noise signal array.
-            sr (int, optional): The sampling rate of the signals. Defaults to 16,000Hz.
+    Args:
+        sig (np.ndarray): The primary noisy signal array.
+        noise (np.ndarray): The reference noise signal array.
+        sr (int, optional): The sampling rate of the signals. Defaults to 16,000Hz.
 
-        Returns:
-            torch.Tensor: The estimated clean signal (s_hat) produced by the model.
+    Returns:
+        torch.Tensor: The estimated clean signal (s_hat) produced by the model.
 
-        Raises:
-            IndexError: If the input signal and noise arrays have different lengths.
-        """
+    Raises:
+        IndexError: If the input signal and noise arrays have different lengths.
+    """
     from pathlib import Path
-    _ = sr
 
+    _ = sr
 
     if len(sig) != len(noise):
         raise IndexError("Both arrays must have the same length.")
@@ -228,7 +240,7 @@ def process_nkf(sig: np.ndarray, noise: np.ndarray, sr: int = 16000):
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found at: {model_path}")
 
-    model = NKF(l=4)
+    model = NKF(layers=4)
     numparams = 0
     for param in model.parameters():
         numparams += param.numel()

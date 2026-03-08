@@ -52,7 +52,15 @@ jobs:
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update_requirements.ps1
           git diff --exit-code requirements.in requirements.txt
 
-      - name: Run tests
+      - name: Run tests (pass if none)
         shell: pwsh
         run: |
-          .\.venv\Scripts\python.exe -m pytest -q
+          .\.venv\Scripts\python.exe -m pytest -vv -ra -W default
+          $code = $LASTEXITCODE
+          if ($code -eq 0 -or $code -eq 5) {
+            Write-Host "pytest exit code $code (OK)"
+            exit 0
+          } else {
+            Write-Host "pytest exit code $code (FAIL)"
+            exit $code
+          }

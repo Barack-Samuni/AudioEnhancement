@@ -1,7 +1,8 @@
+from typing import Any, Tuple
+
 import numpy as np
 from numpy import dtype, ndarray, number
 from tqdm import tqdm
-from typing import Tuple, Any
 
 
 class RLSFilter:
@@ -26,7 +27,11 @@ class RLSFilter:
         self.w = np.zeros(n_taps)  # Filter weights initialization
         self.P = (1.0 / delta) * np.eye(n_taps)  # Inverse correlation matrix initialization
 
-    def adapt(self, x: np.ndarray, d: float):
+    def adapt(
+        self, x: np.ndarray, d: float
+    ) -> tuple[
+        ndarray[tuple[int, ...], dtype[Any]], ndarray[tuple[int, ...], dtype[number[Any, int | float | complex] | Any]]
+    ]:
         """
         Updates filter weights based on a single input vector and desired output.
 
@@ -105,7 +110,7 @@ class RLSFilter:
         sig = []
         # Sliding window iteration through the signals
         for i in tqdm(range(n - self.n_taps + 1)):
-            x_vec = noisy_signal[i:i + self.n_taps]  # Input vector (regressor)
+            x_vec = noisy_signal[i : i + self.n_taps]  # Input vector (regressor)
             d = noise[i]  # Desired signal target
             y, e = self.adapt(x_vec, d)
             errors.append(e)

@@ -1,9 +1,10 @@
-import soundfile as sf
 import os
-import numpy as np
 import tkinter as tk
 from tkinter import filedialog
 from typing import List, Tuple
+
+import numpy as np
+import soundfile as sf
 
 
 def select_audio_files() -> List[str]:
@@ -15,14 +16,14 @@ def select_audio_files() -> List[str]:
     """
     root = tk.Tk()
     root.withdraw()
-    root.attributes('-topmost', True)
+    root.attributes("-topmost", True)
 
     file_paths = filedialog.askopenfilenames(
-        title="Select Audio Files",
-        filetypes=[("Audio Files", "*.wav"), ("All Files", "*.*")]
+        title="Select Audio Files", filetypes=[("Audio Files", "*.wav"), ("All Files", "*.*")]
     )
     root.destroy()
     return list(file_paths)
+
 
 def load_sound(filename: str) -> Tuple[np.ndarray, int]:
     """

@@ -1,15 +1,16 @@
+from datetime import datetime
+from pathlib import Path
+from typing import Union
 
 import numpy as np
-from datetime import datetime
-import IO as IO_LOADER
-import torch
-from typing import Union
-from ANC.NLMS import NLMS_calculation
-from ANC.nkf import process_nkf
-from ANC.rls_filter import RLSFilter
-import utils as ut
-from pathlib import Path
 import scipy.signal as sg
+import torch
+
+from ANC.nkf import process_nkf
+from ANC.NLMS import NLMS_calculation
+from ANC.rls_filter import RLSFilter
+from src import IO as IO_LOADER
+from src import utils as ut
 
 # Constants
 DEFAULT_SAMPLE_RATE = 16000
@@ -35,6 +36,7 @@ def show_spectrogram(sig: np.ndarray, fs: int, title: str = "Spectrogram") -> No
     # because we already converted it to dB in the calculation step.
     ut.plot_stft(stft_db, t=t, f=f, mode="", title=title)
 
+
 def main() -> None:
     # 1. Select the files and initialize parameters
     alignment = False  # Flag to skip manual alignment if data is already correlated
@@ -58,17 +60,16 @@ def main() -> None:
         if not alignment:
             # Estimate delay using GCC-PHAT cross-correlation
             alignment_window = fs_resample * GCC_PHAT_ALIGNMENT_SECONDS
-            tau = ut.gcc_phat(resampled_sig[:alignment_window], resampled_noise[:alignment_window],
-                              fs=fs_resample, interp=1)
+            tau = ut.gcc_phat(
+                resampled_sig[:alignment_window], resampled_noise[:alignment_window], fs=fs_resample, interp=1
+            )
             tau = max(0, int((tau - ALIGNMENT_SAFETY_BUFFER) * fs_resample))  # Convert to sample count
 
             # Use torch to shift the noise signal by padding with zeros
             resampled_sig = torch.from_numpy(resampled_sig).float()
             resampled_noise = torch.from_numpy(resampled_noise).float()
             tau_samples = int(tau)
-            resampled_noise = torch.cat(
-                [torch.zeros(int(tau_samples)), resampled_noise]
-            )[: resampled_sig.shape[-1]]
+            resampled_noise = torch.cat([torch.zeros(int(tau_samples)), resampled_noise])[: resampled_sig.shape[-1]]
 
             # Convert back to numpy and ensure lengths match exactly
             resampled_sig = resampled_sig.numpy()
@@ -79,7 +80,9 @@ def main() -> None:
             IO_LOADER.save_sound(rf"{project_root}\corr_noise.wav", resampled_noise, fs_resample)
             IO_LOADER.save_sound(rf"{project_root}\corr_sig.wav", resampled_sig, fs_resample)
 
-        resampled_noise = distortion_ir(resampled_noise) #NO MANDOTRY- APPLYS EXPONENTIAL TF TO THE NOISE AND NORMALIZE
+        resampled_noise = distortion_ir(
+            resampled_noise
+        )  # NO MANDOTRY- APPLYS EXPONENTIAL TF TO THE NOISE AND NORMALIZE
         # Analyze initial coherence between noise and signal before filtering
         ut.coherence_of_sigs(resampled_sig, resampled_noise, fs_resample)
 
@@ -129,7 +132,7 @@ def get_results_dir(root_path: Path) -> Path:
     Creates and returns a directory path for results based on the current date.
     """
     # %H: Hour (24-hour clock), %M: Minute
-    today = datetime.now().strftime('%Y-%m-%d-%H-%M')
+    today = datetime.now().strftime("%Y-%m-%d-%H-%M")
 
     # 2. Define the path: ProjectRoot / results / 2026-03-04
     results_base = Path(root_path) / "results"
@@ -189,8 +192,9 @@ def save_and_analyze_result(
     ut.coherence_of_sigs(result, noise, fs)
 
 
-def process_ancs(fs_resample: int, iteration: int, project_root: Path, resampled_noise: np.ndarray,
-                 resampled_sig: np.ndarray):
+def process_ancs(
+    fs_resample: int, iteration: int, project_root: Path, resampled_noise: np.ndarray, resampled_sig: np.ndarray
+):
     """
     Runs the noise cancellation pipeline using different algorithms and saves results.
     """
@@ -201,8 +205,15 @@ def process_ancs(fs_resample: int, iteration: int, project_root: Path, resampled
     results_dir = get_results_dir(project_root)
 
     # --- NLMS Algorithm ---
-    nlms_result = NLMS_calculation(total_sig=resampled_sig, noise=resampled_noise, fs1=fs_resample, fs2=fs_resample,
-                                   fs_resample=DEFAULT_SAMPLE_RATE, filter_window=NLMS_FILTER_WINDOW, mu=NLMS_MU)
+    nlms_result = NLMS_calculation(
+        total_sig=resampled_sig,
+        noise=resampled_noise,
+        fs1=fs_resample,
+        fs2=fs_resample,
+        fs_resample=DEFAULT_SAMPLE_RATE,
+        filter_window=NLMS_FILTER_WINDOW,
+        mu=NLMS_MU,
+    )
     save_and_analyze_result(
         nlms_result,
         resampled_noise,
