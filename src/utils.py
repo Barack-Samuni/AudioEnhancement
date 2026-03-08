@@ -1,3 +1,4 @@
+import sys
 from typing import Literal, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -11,7 +12,8 @@ import torch
 # EPSILON: constant to prevent division by 0
 WIN_DUR = 0.064
 HOP_FRAC = 0.2
-EPSILON = 1e-15
+EPSILON = sys.float_info.epsilon
+IMPULSE_RESPONSE_LENGTH = 20
 
 # Utility functions
 
@@ -33,6 +35,44 @@ FilterType = Literal[
     "hp",
     "h",
 ]
+
+
+def lin2dB(sig: np.ndarray, Power: bool = False) -> np.ndarray:
+    """
+    Converts a linear signal to the Decibel (dB) scale.
+
+    Parameters:
+    -----------
+    sig:   The input signal (Amplitude or Power).
+    Power: If True, uses 10*log10 (for Power/Energy).
+           If False, uses 20*log10 (for Amplitude/Voltage).
+    """
+    # 1. Take the absolute value to ensure we don't log a negative number
+    # 2. Add EPSILON to prevent log(0) which returns -inf
+    if Power:
+        # P_dB = 10 * log10(P_linear)
+        return 10 * np.log10(np.abs(sig) + EPSILON)
+    else:
+        # A_dB = 20 * log10(A_linear)
+        return 20 * np.log10(np.abs(sig) + EPSILON)
+
+
+def dB2lin(db_sig: np.ndarray, Power: bool = False) -> np.ndarray:
+    """
+    Converts a Decibel (dB) value back to the linear scale.
+
+    Parameters:
+    -----------
+    db_sig: The input signal in dB.
+    Power:  If True, uses 10^(dB/10).
+            If False, uses 10^(dB/20).
+    """
+    if Power:
+        # P_linear = 10^(P_dB / 10)
+        return 10 ** (db_sig / 10.0)
+    else:
+        # A_linear = 10^(A_dB / 20)
+        return 10 ** (db_sig / 20.0)
 
 
 def butter_filter(
@@ -114,7 +154,7 @@ def calc_stft(sig: np.ndarray, fs: int, mode: str = "linear") -> Tuple[np.ndarra
         return f1, t1, stft_abs
     if mode == "dB":
         # Convert to logarithmic scale (Decibels) for better visualization of quiet sounds
-        return f1, t1, 20 * np.log10(stft_abs + EPSILON)
+        return f1, t1, lin2dB(sig, False)
 
     # Return complex numbers for processing/reconstruction
     return f1, t1, sig_stft
@@ -158,7 +198,7 @@ def plot_stft(
     """
     _, ax = plt.subplots(figsize=(10, 4))
     if mode == "dB":
-        plot_data = 20 * np.log10(stft + EPSILON)
+        plot_data = lin2dB(stft, False)
     else:
         plot_data = stft
 
@@ -173,8 +213,8 @@ def plot_stft(
         origin="lower",
         aspect="auto",
         cmap="inferno",
-        vmin=vmin if mode == "log" else None,
-        vmax=vmax if mode == "log" else None,
+        vmin=vmin if mode == "dB" else None,
+        vmax=vmax if mode == "dB" else None,
         extent=extent,
     )
 
@@ -184,24 +224,39 @@ def plot_stft(
     plt.show()
 
 
-def coherence_of_sigs(sig: np.ndarray, noise: np.ndarray, fs: int) -> None:
+def coherence_of_sigs(
+    sig: np.ndarray, noise: np.ndarray, fs: int, plot_coher: bool = False
+) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Calculates and plots the coherence between two signals across frequencies.
+    Calculates and optionally plots the Magnitude Squared Coherence between two signals.
 
-    Coherence measures the linear relationship between two signals at each frequency.
-    Values near 1.0 indicate high correlation, which is crucial for effective ANC.
+    Coherence (Cxy) is a function of frequency with values between 0 and 1.
+    - 1.0: Perfect linear relationship (The filter can perfectly cancel this).
+    - 0.0: No relationship (The filter will fail to remove this noise).
 
-    Args:
-        sig: First signal array
-        noise: Second signal array (reference noise)
-        fs: Sampling rate
+    Parameters:
+    -----------
+    sig:         The primary signal (Speech + Noise).
+    noise:       The reference noise signal.
+    fs:          Sampling frequency (usually 16000).
+    plot_coher:  If True, displays the coherence plot.
+
+    Returns:
+    --------
+    f (ndarray):   Frequency vector.
+    Cxy (ndarray): Coherence values for each frequency.
     """
     n_overlap, window_size = stft_params_calc(fs)
     f, cxy = sg.coherence(sig, noise, fs=fs, noverlap=n_overlap, nperseg=window_size)
-    plt.plot(f, cxy)
-    plt.xlabel("frequency [Hz]")
-    plt.ylabel("Coherence")
-    plt.show(block=True)
+    if plot_coher:
+        plt.plot(f, cxy)
+        plt.xlabel("frequency [Hz]")
+        plt.ylabel("Coherence")
+        plt.show(block=True)
+    return f, cxy
+
+
+# 2. Matching and Correlation
 
 
 def match_sigs(ref: np.ndarray, sig: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -225,6 +280,29 @@ def match_sigs(ref: np.ndarray, sig: np.ndarray) -> Tuple[np.ndarray, np.ndarray
         sig = sig[: len(ref)]
 
     return ref, sig
+
+
+def adjust_min_length(noise: np.ndarray, total_sig: np.ndarray) -> Tuple[np.ndarray, np.ndarray, int]:
+    """
+    Sincronizes two signals by cropping both to the length of the shorter one.
+    This is essential for element-wise operations like subtraction in ANC.
+
+    Parameters:
+    -----------
+    noise (np.ndarray):     The noise reference signal array.
+    total_sig (np.ndarray): The primary signal array (speech + noise).
+
+    Returns:
+    --------
+    Tuple[np.ndarray, np.ndarray, int]:
+        - The cropped noise signal.
+        - The cropped primary signal.
+        - The new common length (min_len).
+    """
+    min_len = min(len(total_sig), len(noise))
+    noise = noise[:min_len]
+    total_sig = total_sig[:min_len]
+    return noise, total_sig, min_len
 
 
 def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
@@ -289,3 +367,87 @@ def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
     tau = shift / float(interp * fs)
 
     return tau
+
+
+def adjusting_delays(sig_to_adjust: np.ndarray, sig_source: np.ndarray, tau: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Aligns two signals in time by shifting one relative to the other based on a calculated delay.
+
+    This function takes a signal that needs shifting (sig_to_adjust) and pads it with zeros
+    at the beginning to match the timing of a reference source (sig_source).
+
+    Args:
+        sig_to_adjust (np.ndarray): The signal to be delayed (usually the reference noise).
+        sig_source (np.ndarray):    The anchor signal (usually the primary noisy microphone).
+        tau (int):                 The delay amount in samples (calculated via GCC-PHAT).
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: The synchronized (adjusted) signal and the source signal.
+    """
+    sig_source = torch.from_numpy(sig_source).float()
+    sig_to_adjust = torch.from_numpy(sig_to_adjust).float()
+    tau_samples = int(tau)
+    sig_to_adjust = torch.cat([torch.zeros(int(tau_samples)), sig_to_adjust])[: sig_source.shape[-1]]
+    sig_to_adjust = sig_to_adjust.numpy()
+    sig_source = sig_source.numpy()
+    return sig_to_adjust, sig_source
+
+
+# 3. Transfer functions processes
+
+
+def distortion_ir(noise: np.ndarray) -> np.ndarray:
+    """
+    Simulates room acoustic distortion by applying an Exponential Decay Impulse Response.
+
+    This function models how sound reverberates in a room by applying a simple
+    exponentially decaying impulse response filter. This simulates the effect of
+    reflections and acoustic distortion that occurs when noise travels through a
+    physical space before being captured by a microphone.
+
+    The impulse response uses:
+    - Exponential decay over 20 samples to simulate reflection damping
+    - Random phase shifts (+1 or -1) to model complex reflection patterns
+    - Normalization to prevent clipping
+
+    Args:
+        noise: Input noise signal as numpy array
+
+    Returns:
+        Distorted noise signal with simulated room acoustics
+
+    Note:
+        This is used to test ANC algorithm robustness against acoustic path mismatch
+        between reference and primary microphones in real-world scenarios.
+    """
+    # Generate exponentially decaying impulse response with random phase
+    room_ir = np.exp(-np.linspace(0, 1, IMPULSE_RESPONSE_LENGTH)) * np.random.choice([1, -1], IMPULSE_RESPONSE_LENGTH)
+
+    # Apply room impulse response filter
+    noise = sg.lfilter(room_ir, [1], noise)
+
+    # Normalize to prevent clipping
+    noise = normalize_sig(noise)
+
+    return noise
+
+
+def normalize_sig(sig):
+    """
+    Performs Peak Normalization on a digital audio signal.
+
+    This process finds the highest absolute value in the signal and scales
+    every sample so that the peak reaches exactly 1.0 (or -1.0).
+
+    Parameters:
+    -----------
+    sig (np.ndarray): The input audio signal array. Can be a raw signal
+                      from a WAV file or the output of an ANC filter
+                      (like NLMS, RLS, or NKF).
+
+    Returns:
+    --------
+    np.ndarray: The normalized signal where all values are within the
+                range [-1.0, 1.0].
+    """
+    return sig / np.max(np.abs(sig))

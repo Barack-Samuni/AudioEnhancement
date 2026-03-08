@@ -14,11 +14,18 @@ CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 """
 
+import warnings
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
+from tqdm import tqdm
+
+import src.utils as ut
+
+RECOMMENDED_FS = 16000
 
 
 class ComplexGRU(nn.Module):
@@ -135,7 +142,6 @@ class NKF(nn.Module):
             layers = kwargs.pop("L")
         if kwargs:
             raise TypeError(f"Unexpected keyword arguments: {', '.join(kwargs.keys())}")
-
         self.L: int = int(layers)
         self.kg_net = KGNet(self.L, fc_dim=18, rnn_layers=1, rnn_dim=18)
         self.stft = lambda x: torch.stft(
@@ -174,7 +180,7 @@ class NKF(nn.Module):
         y = y.contiguous().view(total_bins, time_steps_i)
         echo_hat = torch.zeros(total_bins, time_steps_i, dtype=torch.complex64, device=device)
 
-        for frame_idx in range(time_steps_i):
+        for frame_idx in tqdm(range(time_steps_i)):
             if frame_idx < self.L:
                 xt = torch.cat(
                     [
@@ -208,7 +214,7 @@ class NKF(nn.Module):
         return s_hat
 
 
-def process_nkf(sig: np.ndarray, noise: np.ndarray, sr: int = 16000):
+def process_nkf(sig: np.ndarray, noise: np.ndarray, fs_sig, fs_noise):
     """
     Processes audio using a Neural Kalman Filter (NKF) for noise cancellation.
 
@@ -226,14 +232,17 @@ def process_nkf(sig: np.ndarray, noise: np.ndarray, sr: int = 16000):
     Raises:
         IndexError: If the input signal and noise arrays have different lengths.
     """
-    from pathlib import Path
 
-    _ = sr
-
-    if len(sig) != len(noise):
-        raise IndexError("Both arrays must have the same length.")
-
+    if fs_sig != fs_noise:
+        raise IndexError("Both signal must have the same sample rate.")
     # Use relative path from the current file location
+    if fs_sig != RECOMMENDED_FS:
+        warnings.warn(
+            f"To optimize nkf- we recommend using sample rate of 16Khz which in this case the fs is : {fs_sig}"
+        )
+
+    noise, sig, min_len = ut.adjust_min_length(noise, sig)
+
     model_path = Path(__file__).parent / "nkf_epoch70.pt"
 
     # Check if model file exists

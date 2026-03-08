@@ -1,5 +1,7 @@
 import os
 import tkinter as tk
+from datetime import datetime
+from pathlib import Path
 from tkinter import filedialog
 from typing import List, Tuple
 
@@ -81,3 +83,20 @@ def stereo_to_mono(data: np.ndarray) -> np.ndarray:
     if data.ndim > 1:
         data = np.mean(data, axis=1)
     return data
+
+
+def get_results_dir(root_path: Path) -> Path:
+    """
+    Creates and returns a directory path for results based on the current date.
+    """
+    # %H: Hour (24-hour clock), %M: Minute
+    today = datetime.now().strftime("%Y-%m-%d-%H-%M")
+
+    # 2. Define the path: ProjectRoot / results / 2026-03-04
+    results_base = Path(root_path) / "results"
+    daily_dir = results_base / today
+
+    # 3. Create the directories (parents=True creates 'results' if it's missing)
+    daily_dir.mkdir(parents=True, exist_ok=True)
+
+    return daily_dir

@@ -1,15 +1,13 @@
-from datetime import datetime
 from pathlib import Path
-from typing import Union
+from typing import Tuple, Union
 
 import numpy as np
-import scipy.signal as sg
 import torch
 
 from ANC.nkf import process_nkf
-from ANC.NLMS import NLMS_calculation
+from ANC.nlms_filter import nlms_calculation
 from ANC.rls_filter import RLSFilter
-from src import IO as IO_LOADER
+from src import files_handler as io_loader
 from src import utils as ut
 
 # Constants
@@ -17,7 +15,6 @@ DEFAULT_SAMPLE_RATE = 16000
 NLMS_FILTER_WINDOW = 1024
 NLMS_MU = 0.1
 RLS_N_TAPS = 64
-IMPULSE_RESPONSE_LENGTH = 20
 GCC_PHAT_ALIGNMENT_SECONDS = 10
 ALIGNMENT_SAFETY_BUFFER = 0.001  # seconds
 
@@ -29,12 +26,12 @@ def show_spectrogram(sig: np.ndarray, fs: int, title: str = "Spectrogram") -> No
     """
     # 1. Calculate STFT in dB mode using your utils function
     # f: frequency bins, t: time bins, stft_db: magnitude in dB
-    f, t, stft_db = ut.calc_stft(sig, fs, mode="dB")
+    f, t, stft_db = ut.calc_stft(sig, fs, mode="linear")
 
     # 3. Use your utility plot function
     # We pass the dB data and specify mode="linear" to plot_stft
     # because we already converted it to dB in the calculation step.
-    ut.plot_stft(stft_db, t=t, f=f, mode="", title=title)
+    ut.plot_stft(stft_db, t=t, f=f, mode="dB", title=title)
 
 
 def main() -> None:
@@ -45,15 +42,15 @@ def main() -> None:
     # Iterate through pairs of signal and noise reference files
     for s_path, n_path in zip(signal_files, noise_files):
         # Load audio data from selected paths
-        sig, _fs_sig = IO_LOADER.load_sound(s_path)
-        noise, fs_noise = IO_LOADER.load_sound(n_path)
+        sig, fs_sig = io_loader.load_sound(s_path)
+        noise, fs_noise = io_loader.load_sound(n_path)
 
         # Ensure signals are mono for processing
-        sig = IO_LOADER.stereo_to_mono(sig)
-        noise = IO_LOADER.stereo_to_mono(noise)
+        sig = io_loader.stereo_to_mono(sig)
+        noise = io_loader.stereo_to_mono(noise)
 
         # Resample both signals to the target processing frequency (usually 16kHz)
-        resampled_sig, _ = ut.resample_fs(sig, fs_noise, fs_resample)
+        resampled_sig, _ = ut.resample_fs(sig, fs_sig, fs_resample)
         resampled_noise, _ = ut.resample_fs(noise, fs_noise, fs_resample)
 
         # Perform Time Alignment if the alignment flag is False
@@ -63,96 +60,39 @@ def main() -> None:
             tau = ut.gcc_phat(
                 resampled_sig[:alignment_window], resampled_noise[:alignment_window], fs=fs_resample, interp=1
             )
-            tau = max(0, int((tau - ALIGNMENT_SAFETY_BUFFER) * fs_resample))  # Convert to sample count
-
+            sign_tau = np.sign(tau)  # sign of this delay
+            tau = max(0, int((np.abs(tau) - ALIGNMENT_SAFETY_BUFFER) * fs_resample))  # Checks alignment buffer
+            tau = int(sign_tau * tau)  # applys back the delay
             # Use torch to shift the noise signal by padding with zeros
-            resampled_sig = torch.from_numpy(resampled_sig).float()
-            resampled_noise = torch.from_numpy(resampled_noise).float()
-            tau_samples = int(tau)
-            resampled_noise = torch.cat([torch.zeros(int(tau_samples)), resampled_noise])[: resampled_sig.shape[-1]]
-
-            # Convert back to numpy and ensure lengths match exactly
-            resampled_sig = resampled_sig.numpy()
-            resampled_noise = resampled_noise.numpy()
-            resampled_noise, resampled_sig = ut.match_sigs(resampled_noise, resampled_sig)
-
+            resampled_noise, resampled_sig = ut.adjusting_delays(
+                sig_to_adjust=resampled_noise, sig_source=resampled_sig, tau=tau
+            )
+            # ensure lengths match exactly
+            resampled_noise, resampled_sig = ut.match_sigs(ref=resampled_noise, sig=resampled_sig)
             # Save the newly aligned/correlated signals
-            IO_LOADER.save_sound(rf"{project_root}\corr_noise.wav", resampled_noise, fs_resample)
-            IO_LOADER.save_sound(rf"{project_root}\corr_sig.wav", resampled_sig, fs_resample)
+            io_loader.save_sound(rf"{project_root}\corr_noise1.wav", resampled_noise, fs_resample)
+            io_loader.save_sound(rf"{project_root}\corr_sig1    .wav", resampled_sig, fs_resample)
 
-        resampled_noise = distortion_ir(
+        resampled_noise = ut.distortion_ir(
             resampled_noise
         )  # NO MANDOTRY- APPLYS EXPONENTIAL TF TO THE NOISE AND NORMALIZE
         # Analyze initial coherence between noise and signal before filtering
-        ut.coherence_of_sigs(resampled_sig, resampled_noise, fs_resample)
+        ut.coherence_of_sigs(resampled_sig, resampled_noise, fs_resample, True)
 
         # Run various ANC algorithms (NLMS, NKF, RLS)
         process_ancs(fs_resample, iteration, project_root, resampled_noise, resampled_sig)
         iteration += 1
 
 
-def distortion_ir(noise: np.ndarray) -> np.ndarray:
-    """
-    Simulates room acoustic distortion by applying an Exponential Decay Impulse Response.
-
-    This function models how sound reverberates in a room by applying a simple
-    exponentially decaying impulse response filter. This simulates the effect of
-    reflections and acoustic distortion that occurs when noise travels through a
-    physical space before being captured by a microphone.
-
-    The impulse response uses:
-    - Exponential decay over 20 samples to simulate reflection damping
-    - Random phase shifts (+1 or -1) to model complex reflection patterns
-    - Normalization to prevent clipping
-
-    Args:
-        noise: Input noise signal as numpy array
-
-    Returns:
-        Distorted noise signal with simulated room acoustics
-
-    Note:
-        This is used to test ANC algorithm robustness against acoustic path mismatch
-        between reference and primary microphones in real-world scenarios.
-    """
-    # Generate exponentially decaying impulse response with random phase
-    room_ir = np.exp(-np.linspace(0, 1, IMPULSE_RESPONSE_LENGTH)) * np.random.choice([1, -1], IMPULSE_RESPONSE_LENGTH)
-
-    # Apply room impulse response filter
-    noise = sg.lfilter(room_ir, [1], noise)
-
-    # Normalize to prevent clipping
-    noise = noise / np.max(np.abs(noise))
-
-    return noise
-
-
-def get_results_dir(root_path: Path) -> Path:
-    """
-    Creates and returns a directory path for results based on the current date.
-    """
-    # %H: Hour (24-hour clock), %M: Minute
-    today = datetime.now().strftime("%Y-%m-%d-%H-%M")
-
-    # 2. Define the path: ProjectRoot / results / 2026-03-04
-    results_base = Path(root_path) / "results"
-    daily_dir = results_base / today
-
-    # 3. Create the directories (parents=True creates 'results' if it's missing)
-    daily_dir.mkdir(parents=True, exist_ok=True)
-
-    return daily_dir
-
-
-def load_data() -> tuple[int, int, list[str], Path, list[str]]:
+def load_data() -> Tuple[int, int, list[str], Path, list[str]]:
     """
     Handles file selection via UI and prepares project variables.
     """
     print("Please select the TOTAL signals (signal + noise):")
-    signal_files = IO_LOADER.select_audio_files()
+    signal_files = io_loader.select_audio_files()
 
     print("Please select the NOISE reference signals:")
-    noise_files = IO_LOADER.select_audio_files()
+    noise_files = io_loader.select_audio_files()
 
     project_root = Path(signal_files[0]).parent
     iteration = 0
@@ -188,8 +128,8 @@ def save_and_analyze_result(
 
     show_spectrogram(result, fs, title)
     output_path = results_dir / filename
-    IO_LOADER.save_sound(str(output_path), result, fs)
-    ut.coherence_of_sigs(result, noise, fs)
+    io_loader.save_sound(str(output_path), result, fs)
+    ut.coherence_of_sigs(result, noise, fs, True)
 
 
 def process_ancs(
@@ -202,10 +142,10 @@ def process_ancs(
     show_spectrogram(resampled_noise, fs_resample, "Noise microphone (less sensitive)")
     show_spectrogram(resampled_sig, fs_resample, "Signal + noise before enhancement (sensitive mic)")
 
-    results_dir = get_results_dir(project_root)
+    results_dir = io_loader.get_results_dir(project_root)
 
     # --- NLMS Algorithm ---
-    nlms_result = NLMS_calculation(
+    nlms_result = nlms_calculation(
         total_sig=resampled_sig,
         noise=resampled_noise,
         fs1=fs_resample,
@@ -224,13 +164,13 @@ def process_ancs(
     )
 
     # --- NKF (Neural Kalman Filter) ---
-    nkf_result = process_nkf(sig=resampled_sig, noise=resampled_noise)
+    nkf_result = process_nkf(sig=resampled_sig, noise=resampled_noise, fs_sig=fs_resample, fs_noise=fs_resample)
     save_and_analyze_result(
         nkf_result,
         resampled_noise,
         fs_resample,
         results_dir,
-        f"nkf{iteration}.wav",
+        f"nkf {iteration}.wav",
         "Signal after NKF only",
     )
 
@@ -253,6 +193,7 @@ def process_ancs(
         f"sig_RLS{iteration}.wav",
         "noise estimation after RLS only",
     )
+
 
 if __name__ == "__main__":
     main()
