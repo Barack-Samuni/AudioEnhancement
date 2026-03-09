@@ -73,7 +73,7 @@ def main() -> None:
             io_loader.save_sound(rf"{project_root}\corr_noise1.wav", resampled_noise, fs_resample)
             io_loader.save_sound(rf"{project_root}\corr_sig1.wav", resampled_sig, fs_resample)
 
-        # resampled_noise = ut.distortion_ir(resampled_noise)
+        resampled_noise = ut.distortion_ir(resampled_noise)
         # NO MANDOTRY- APPLYS EXPONENTIAL TF TO THE NOISE AND NORMALIZE
 
         # Analyze initial coherence between noise and signal before filtering
