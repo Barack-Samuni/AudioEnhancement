@@ -2,23 +2,18 @@ from pathlib import Path
 
 import numpy as np
 
-from ANC.anc_helpers import alignment_process, analyze_results, show_spectrogram
-from ANC.nkf import process_nkf
-from ANC.nlms_filter import nlms_calculation
-from ANC.rls_filter import RLSFilter
+from ANC.anc_helpers import alignment_process, analyze_nkf, analyze_nlms, analyze_rls, show_spectrogram
 from src import files_handler as io_loader
 from src import utils as ut
 
 # Constants
 DEFAULT_SAMPLE_RATE = 16000
 NLMS_FILTER_WINDOW = 1024
-NLMS_MU = 0.1
-RLS_N_TAPS = 64
 
 
 def main() -> None:
     # 1. Select the files and initialize parameters
-    alignment = True  # Flag to skip manual alignment if data is already correlated
+    alignment = False  # Flag to skip manual alignment if data is already correlated
     noise_files, project_root, signal_files = io_loader.load_data()
     iteration = 0
     fs_resample = DEFAULT_SAMPLE_RATE
@@ -41,8 +36,8 @@ def main() -> None:
             io_loader.save_sound(rf"{project_root}\corr_noise1.wav", resampled_noise, fs_resample)
             io_loader.save_sound(rf"{project_root}\corr_sig1.wav", resampled_sig, fs_resample)
 
-        resampled_noise = ut.distortion_ir(resampled_noise)
         # NO MANDOTRY- APPLYS EXPONENTIAL TF TO THE NOISE AND NORMALIZE
+        resampled_noise = ut.distortion_ir(resampled_noise)
         # Analyze initial coherence between noise and signal before filtering
         ut.coherence_of_sigs(resampled_sig, resampled_noise, fs_resample, True)
         # Run various ANC algorithms (NLMS, NKF, RLS)
@@ -55,62 +50,25 @@ def process_ancs(
 ):
     """
     Runs the noise cancellation pipeline using different algorithms and saves results.
+
+    Args:
+        fs_resample (int): The sampling frequency (Hz) of the audio signals after resampling.
+        iteration (int): The current test or epoch number, used for versioning saved outputs.
+        project_root (Path): Pathlib object pointing to the root directory of the project.
+        resampled_noise (np.ndarray): The reference noise signal captured by the less sensitive mic.
+        resampled_sig (np.ndarray): The primary signal (voice + noise) captured by the sensitive mic.
     """
-    # Show input signals
+    # Show input stfts
     show_spectrogram(resampled_noise, fs_resample, "Noise microphone (less sensitive)")
     show_spectrogram(resampled_sig, fs_resample, "Signal + noise before enhancement (sensitive mic)")
 
     results_dir = io_loader.get_results_dir(project_root)
 
-    # --- NLMS Algorithm ---
-    nlms_result = nlms_calculation(
-        total_sig=resampled_sig,
-        noise=resampled_noise,
-        fs1=fs_resample,
-        fs2=fs_resample,
-        fs_resample=DEFAULT_SAMPLE_RATE,
-        filter_window=NLMS_FILTER_WINDOW,
-        mu=NLMS_MU,
-    )
-    analyze_results(
-        nlms_result,
-        resampled_noise,
-        fs_resample,
-        results_dir,
-        f"NLMS{iteration}.wav",
-        "Signal after NLMS only",
-    )
+    analyze_nlms(fs_resample, iteration, resampled_noise, resampled_sig, results_dir)
 
-    # --- NKF (Neural Kalman Filter) ---
-    nkf_result = process_nkf(sig=resampled_sig, noise=resampled_noise, fs_sig=fs_resample, fs_noise=fs_resample)
-    analyze_results(
-        nkf_result,
-        resampled_noise,
-        fs_resample,
-        results_dir,
-        f"nkf {iteration}.wav",
-        "Signal after NKF only",
-    )
+    analyze_nkf(fs_resample, iteration, resampled_noise, resampled_sig, results_dir)
 
-    # --- RLS (Recursive Least Squares) ---
-    rls_flit = RLSFilter(n_taps=RLS_N_TAPS)
-    noise_estimation, rls_error = rls_flit.process(noisy_signal=resampled_sig, noise=resampled_noise)
-    analyze_results(
-        rls_error,
-        resampled_noise,
-        fs_resample,
-        results_dir,
-        f"error_RLS{iteration}.wav",
-        "error after RLS only",
-    )
-    analyze_results(
-        noise_estimation,
-        resampled_noise,
-        fs_resample,
-        results_dir,
-        f"sig_RLS{iteration}.wav",
-        "noise estimation after RLS only",
-    )
+    analyze_rls(fs_resample, iteration, resampled_noise, resampled_sig, results_dir)
 
 
 if __name__ == "__main__":

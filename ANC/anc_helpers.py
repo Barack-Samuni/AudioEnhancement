@@ -4,8 +4,17 @@ from typing import Union
 import numpy as np
 import torch
 
+from ANC.nkf import process_nkf
+from ANC.nlms_filter import nlms_calculation
+from ANC.rls_filter import RLSFilter
 from src import files_handler as io_loader
 from src import utils as ut
+
+NLMS_FILTER_WINDOW = 1024
+NLMS_MU = 0.1
+RLS_N_TAPS = 64
+DEFAULT_SAMPLE_RATE = 16000
+
 
 GCC_PHAT_ALIGNMENT_SECONDS = 10
 ALIGNMENT_SAFETY_BUFFER = 0.001  # seconds
@@ -86,3 +95,92 @@ def alignment_process(
     resampled_noise, resampled_sig = ut.match_sigs(ref=resampled_noise, sig=resampled_sig)  # check?
     # Save the newly aligned/correlated signals
     return resampled_noise, resampled_sig
+
+
+def analyze_rls(
+    fs_resample: int, iteration: int, resampled_noise: np.ndarray, resampled_sig: np.ndarray, results_dir: Path
+):
+    """
+    Executes the Recursive Least Squares (RLS) filter test.
+
+    Args:
+        fs_resample (int): The audio sampling rate (Hz).
+        iteration (int): The current test index for file naming.
+        resampled_noise (np.ndarray): The reference noise signal.
+        resampled_sig (np.ndarray): The primary signal containing noise and target.
+        results_dir (Path): The directory where output files will be saved.
+    """
+    rls_flit = RLSFilter(n_taps=RLS_N_TAPS)
+    noise_estimation, rls_error = rls_flit.process(noisy_signal=resampled_sig, noise=resampled_noise)
+    analyze_results(
+        rls_error,
+        resampled_noise,
+        fs_resample,
+        results_dir,
+        f"error_RLS{iteration}.wav",
+        "error after RLS only",
+    )
+    analyze_results(
+        noise_estimation,
+        resampled_noise,
+        fs_resample,
+        results_dir,
+        f"sig_RLS{iteration}.wav",
+        "noise estimation after RLS only",
+    )
+
+
+def analyze_nkf(
+    fs_resample: int, iteration: int, resampled_noise: np.ndarray, resampled_sig: np.ndarray, results_dir: Path
+):
+    """
+    Executes the Neural Kalman Filter (NKF) test.
+
+    Args:
+        fs_resample (int): The audio sampling rate (Hz).
+        iteration (int): The current test index for file naming.
+        resampled_noise (np.ndarray): The reference noise signal.
+        resampled_sig (np.ndarray): The primary signal containing noise and target.
+        results_dir (Path): The directory where output files will be saved.
+    """
+    nkf_result = process_nkf(sig=resampled_sig, noise=resampled_noise, fs_sig=fs_resample, fs_noise=fs_resample)
+    analyze_results(
+        nkf_result,
+        resampled_noise,
+        fs_resample,
+        results_dir,
+        f"nkf {iteration}.wav",
+        "Signal after NKF only",
+    )
+
+
+def analyze_nlms(
+    fs_resample: int, iteration: int, resampled_noise: np.ndarray, resampled_sig: np.ndarray, results_dir: Path
+):
+    """
+    Executes the Normalized LEAST Mean Squares (NLMS) filter test.
+
+    Args:
+        fs_resample (int): The audio sampling rate (Hz).
+        iteration (int): The current test index for file naming.
+        resampled_noise (np.ndarray): The reference noise signal.
+        resampled_sig (np.ndarray): The primary signal containing noise and target.
+        results_dir (Path): The directory where output files will be saved.
+    """
+    nlms_result = nlms_calculation(
+        total_sig=resampled_sig,
+        noise=resampled_noise,
+        fs1=fs_resample,
+        fs2=fs_resample,
+        fs_resample=DEFAULT_SAMPLE_RATE,
+        filter_window=NLMS_FILTER_WINDOW,
+        mu=NLMS_MU,
+    )
+    analyze_results(
+        nlms_result,
+        resampled_noise,
+        fs_resample,
+        results_dir,
+        f"NLMS{iteration}.wav",
+        "Signal after NLMS only",
+    )
