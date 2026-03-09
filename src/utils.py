@@ -384,10 +384,16 @@ def adjusting_delays(sig_to_adjust: np.ndarray, sig_source: np.ndarray, tau: int
     Returns:
         Tuple[np.ndarray, np.ndarray]: The synchronized (adjusted) signal and the source signal.
     """
+    orig_len = sig_source.shape[-1]
     sig_source = torch.from_numpy(sig_source).float()
     sig_to_adjust = torch.from_numpy(sig_to_adjust).float()
     tau_samples = int(tau)
-    sig_to_adjust = torch.cat([torch.zeros(int(tau_samples)), sig_to_adjust])[: sig_source.shape[-1]]
+    if tau_samples > 0:  # case that sig to adjust is more delayed to source
+        sig_to_adjust = torch.cat([torch.zeros(tau_samples), sig_to_adjust])[:orig_len]
+    elif tau_samples < 0:  # case that sig to adjust is early to source
+        abs_tau = abs(tau_samples)
+        sig_to_adjust = torch.cat([sig_to_adjust[abs_tau:], torch.zeros(abs_tau)])[:orig_len]
+
     sig_to_adjust = sig_to_adjust.numpy()
     sig_source = sig_source.numpy()
     return sig_to_adjust, sig_source

@@ -36,7 +36,7 @@ def show_spectrogram(sig: np.ndarray, fs: int, title: str = "Spectrogram") -> No
 
 def main() -> None:
     # 1. Select the files and initialize parameters
-    alignment = False  # Flag to skip manual alignment if data is already correlated
+    alignment = True  # Flag to skip manual alignment if data is already correlated
     fs_resample, iteration, noise_files, project_root, signal_files = load_data()
 
     # Iterate through pairs of signal and noise reference files
@@ -71,11 +71,11 @@ def main() -> None:
             resampled_noise, resampled_sig = ut.match_sigs(ref=resampled_noise, sig=resampled_sig)
             # Save the newly aligned/correlated signals
             io_loader.save_sound(rf"{project_root}\corr_noise1.wav", resampled_noise, fs_resample)
-            io_loader.save_sound(rf"{project_root}\corr_sig1    .wav", resampled_sig, fs_resample)
+            io_loader.save_sound(rf"{project_root}\corr_sig1.wav", resampled_sig, fs_resample)
 
-        resampled_noise = ut.distortion_ir(
-            resampled_noise
-        )  # NO MANDOTRY- APPLYS EXPONENTIAL TF TO THE NOISE AND NORMALIZE
+        # resampled_noise = ut.distortion_ir(resampled_noise)
+        # NO MANDOTRY- APPLYS EXPONENTIAL TF TO THE NOISE AND NORMALIZE
+
         # Analyze initial coherence between noise and signal before filtering
         ut.coherence_of_sigs(resampled_sig, resampled_noise, fs_resample, True)
 
