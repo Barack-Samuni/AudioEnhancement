@@ -85,6 +85,24 @@ def stereo_to_mono(data: np.ndarray) -> np.ndarray:
     return data
 
 
+def load_data() -> Tuple[int, int, list[str], Path, list[str]]:
+    """
+    Handles file selection via UI and prepares project variables.
+    """
+    print("Please select the TOTAL signals (signal + noise):")
+    signal_files = select_audio_files()
+
+    print("Please select the NOISE reference signals:")
+    noise_files = select_audio_files()
+
+    project_root = Path(signal_files[0]).parent
+
+    # Validation: Ensure we have a reference for every signal
+    if len(signal_files) != len(noise_files):
+        raise IndexError(f"Mismatch: Found {len(signal_files)} signals but {len(noise_files)} noise files.")
+    return noise_files, project_root, signal_files
+
+
 def get_results_dir(root_path: Path) -> Path:
     """
     Creates and returns a directory path for results based on the current date.
