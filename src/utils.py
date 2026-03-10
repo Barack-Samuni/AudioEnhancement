@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.signal as sg
 import torch
+from scipy.ndimage import maximum_filter1d
 
 # 1. Spectral Analysis Parameters
 # WIN_DUR: The length of the analysis window in seconds (64ms)
@@ -466,4 +467,35 @@ def get_sig_envelope(sig: np.ndarray, fs, lpf=10) -> np.ndarray:
     hilbert_transform = sg.hilbert(sig)
     envelope = np.abs(hilbert_transform)
     envelope = butter_filter(data=envelope, cutoff=lpf, fs=fs, btype="lowpass")
+    return envelope
+
+
+def get_peak_envelope(signal, fs, attack_ms=2, release_ms=100):
+    # 1. חישוב המקדמים (זהים לקוד הקודם)
+    alpha_a = np.exp(-1.0 / (fs * attack_ms / 1000.0))
+    alpha_r = np.exp(-1.0 / (fs * release_ms / 1000.0))
+
+    # 2. הכנת מערך המעטפת ויישור האות (Absolute)
+    envelope = np.zeros(len(signal))
+    abs_signal = np.abs(signal)
+
+    # 3. הלולאה הרקורסיבית
+    current_val = 0.0
+    for i in range(len(signal)):
+        input_val = abs_signal[i]
+
+        if input_val > current_val:
+            # שלב ה-Attack (עוקב למעלה)
+            current_val = alpha_a * current_val + (1 - alpha_a) * input_val
+        else:
+            # שלב ה-Release (דועך לאט)
+            current_val = alpha_r * current_val + (1 - alpha_r) * input_val
+
+        envelope[i] = current_val
+
+    return envelope
+
+
+def maximum_filter_env(signal, window):
+    envelope = maximum_filter1d(np.abs(signal), size=window)
     return envelope
