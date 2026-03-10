@@ -85,7 +85,7 @@ def stereo_to_mono(data: np.ndarray) -> np.ndarray:
     return data
 
 
-def load_data() -> Tuple[int, int, list[str], Path, list[str]]:
+def load_data() -> tuple[list[str], Path, list[str]]:
     """
     Handles file selection via UI and prepares project variables.
     """

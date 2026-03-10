@@ -457,3 +457,13 @@ def normalize_sig(sig):
                 range [-1.0, 1.0].
     """
     return sig / np.max(np.abs(sig))
+
+
+# 3. Envelope Process
+
+
+def get_sig_envelope(sig: np.ndarray, fs, lpf=10) -> np.ndarray:
+    hilbert_transform = sg.hilbert(sig)
+    envelope = np.abs(hilbert_transform)
+    envelope = butter_filter(data=envelope, cutoff=lpf, fs=fs, btype="lowpass")
+    return envelope
