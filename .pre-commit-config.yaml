@@ -1,0 +1,19 @@
+repos:
+
+  # Your existing hook (kept as-is)
+  - repo: local
+    hooks:
+      - id: update-requirements
+        name: Auto-generate requirements.in + requirements.txt
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-requirements.ps1
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+  # Ruff (linting + import sorting + auto-fixes)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
