@@ -1,8 +1,8 @@
 import numpy as np
 from pyroomacoustics.adaptive import NLMS
 
-from src import utils
-from src.utils import resample_fs
+import src.utils as ut
+from src import files_handler as io_loader
 
 
 def nlms_calculation(
@@ -44,19 +44,17 @@ def nlms_calculation(
 
     # 1. Resampling logic
     if fs1 != fs_resample:
-        total_sig, _ = resample_fs(total_sig, fs_old=fs1, fs_new=fs_resample)
+        total_sig, _ = ut.resample_fs(total_sig, fs_old=fs1, fs_new=fs_resample)
 
     if fs2 != fs_resample:
-        noise, _ = resample_fs(noise, fs_old=fs2, fs_new=fs_resample)
+        noise, _ = ut.resample_fs(noise, fs_old=fs2, fs_new=fs_resample)
 
-    # 2. Use only first channel (Mono conversion)
-    if total_sig.ndim > 1:
-        total_sig = total_sig.mean(axis=1)
-    if noise.ndim > 1:
-        noise = noise.mean(axis=1)
+    # 2. Use only first channel (Mono conversion from multichannels audio)
+    total_sig = io_loader.stereo_to_mono(total_sig)
+    noise = io_loader.stereo_to_mono(noise)
 
     # 3. Synchronize signal lengths
-    total_sig, noise = utils.match_sigs(ref=total_sig, sig=noise)
+    noise, total_sig, _ = ut.adjust_min_length(noise, total_sig)
 
     nlms_filter = NLMS(length=filter_window, mu=mu)
     e = np.zeros(len(total_sig))
@@ -68,7 +66,3 @@ def nlms_calculation(
         e[n] = total_sig[n] - np.dot(nlms_filter.w, nlms_filter.x)
 
     return e
-
-
-# Backward-compatible alias for existing callers.
-NLMS_calculation = nlms_calculation

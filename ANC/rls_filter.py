@@ -1,8 +1,10 @@
-from typing import Any, Tuple
+from typing import Tuple
 
 import numpy as np
-from numpy import dtype, ndarray, number
 from tqdm import tqdm
+
+import src.utils as ut
+from src import files_handler as io_loader
 
 
 class RLSFilter:
@@ -27,11 +29,7 @@ class RLSFilter:
         self.w = np.zeros(n_taps)  # Filter weights initialization
         self.P = (1.0 / delta) * np.eye(n_taps)  # Inverse correlation matrix initialization
 
-    def adapt(
-        self, x: np.ndarray, d: float
-    ) -> tuple[
-        ndarray[tuple[int, ...], dtype[Any]], ndarray[tuple[int, ...], dtype[number[Any, int | float | complex] | Any]]
-    ]:
+    def adapt(self, x: np.ndarray, d: float) -> Tuple[np.ndarray, np.ndarray]:
         """
         Updates filter weights based on a single input vector and desired output.
 
@@ -62,7 +60,7 @@ class RLSFilter:
 
         return y, e
 
-    def predict(self, x: np.ndarray) -> ndarray[tuple[int, ...], dtype[Any]]:
+    def predict(self, x: np.ndarray) -> np.ndarray:
         """
         Predicts output for a given input using current weights without adaptation.
 
@@ -95,14 +93,14 @@ class RLSFilter:
         if noisy_signal.size == 0 or noise.size == 0:
             raise ValueError("Input signals cannot be empty")
 
-        # Ensure both have the same length and shape
-        min_len = min(len(noisy_signal), len(noise))
+        noisy_signal = io_loader.stereo_to_mono(noisy_signal)
+        noise = io_loader.stereo_to_mono(noise)
+
+        noise, noisy_signal, min_len = ut.adjust_min_length(noise, noisy_signal)
 
         if min_len < self.n_taps:
             raise ValueError(f"Signal length ({min_len}) must be >= n_taps ({self.n_taps})")
 
-        noise = noise[:min_len]
-        noisy_signal = noisy_signal[:min_len]
         n = len(noisy_signal)
         print("Starting noise cancellation...")
 
@@ -117,5 +115,5 @@ class RLSFilter:
             sig.append(y)
 
         err_array = np.array(errors)
-        sig = np.array(object=sig)
-        return sig, err_array
+        noise_estimation = np.array(object=sig)
+        return noise_estimation, err_array
