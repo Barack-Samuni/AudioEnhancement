@@ -64,11 +64,29 @@ def process_ancs(
 
     results_dir = io_loader.get_results_dir(project_root)
 
-    analyze_nlms(fs_resample, iteration, resampled_noise, resampled_sig, results_dir)
+    analyze_nlms(
+        fs_resample=fs_resample,
+        iteration=iteration,
+        resampled_noise=resampled_noise,
+        resampled_sig=resampled_sig,
+        results_dir=results_dir,
+    )
 
-    analyze_nkf(fs_resample, iteration, resampled_noise, resampled_sig, results_dir)
+    analyze_nkf(
+        fs_resample=fs_resample,
+        iteration=iteration,
+        resampled_noise=resampled_noise,
+        resampled_sig=resampled_sig,
+        results_dir=results_dir,
+    )
 
-    analyze_rls(fs_resample, iteration, resampled_noise, resampled_sig, results_dir)
+    analyze_rls(
+        fs_resample=fs_resample,
+        iteration=iteration,
+        resampled_noise=resampled_noise,
+        resampled_sig=resampled_sig,
+        results_dir=results_dir,
+    )
 
 
 if __name__ == "__main__":
