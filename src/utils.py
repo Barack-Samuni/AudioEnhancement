@@ -16,7 +16,11 @@ HOP_FRAC = 0.2
 EPSILON = sys.float_info.epsilon
 IMPULSE_RESPONSE_LENGTH = 20
 
-# Utility functions
+# -------------------------------------------------
+
+# Important Utility functions- STFT, Db-lin conversions, filters
+
+# -------------------------------------------------
 
 FilterType = Literal[
     "bandpass",
@@ -225,39 +229,9 @@ def plot_stft(
     plt.show()
 
 
-def coherence_of_sigs(
-    sig: np.ndarray, noise: np.ndarray, fs: int, plot_coher: bool = False
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Calculates and optionally plots the Magnitude Squared Coherence between two signals.
-
-    Coherence (Cxy) is a function of frequency with values between 0 and 1.
-    - 1.0: Perfect linear relationship (The filter can perfectly cancel this).
-    - 0.0: No relationship (The filter will fail to remove this noise).
-
-    Parameters:
-    -----------
-    sig:         The primary signal (Speech + Noise).
-    noise:       The reference noise signal.
-    fs:          Sampling frequency (usually 16000).
-    plot_coher:  If True, displays the coherence plot.
-
-    Returns:
-    --------
-    f (ndarray):   Frequency vector.
-    Cxy (ndarray): Coherence values for each frequency.
-    """
-    n_overlap, window_size = stft_params_calc(fs)
-    f, cxy = sg.coherence(sig, noise, fs=fs, noverlap=n_overlap, nperseg=window_size)
-    if plot_coher:
-        plt.plot(f, cxy)
-        plt.xlabel("frequency [Hz]")
-        plt.ylabel("Coherence")
-        plt.show(block=True)
-    return f, cxy
-
-
+# -------------------------------------------------
 # 2. Matching and Correlation
+# -------------------------------------------------
 
 
 def match_sigs(ref: np.ndarray, sig: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -370,6 +344,38 @@ def gcc_phat(sig, refsig, fs=1, max_tau=None, interp=16):
     return tau
 
 
+def coherence_of_sigs(
+    sig: np.ndarray, noise: np.ndarray, fs: int, plot_coher: bool = False
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Calculates and optionally plots the Magnitude Squared Coherence between two signals.
+
+    Coherence (Cxy) is a function of frequency with values between 0 and 1.
+    - 1.0: Perfect linear relationship (The filter can perfectly cancel this).
+    - 0.0: No relationship (The filter will fail to remove this noise).
+
+    Parameters:
+    -----------
+    sig:         The primary signal (Speech + Noise).
+    noise:       The reference noise signal.
+    fs:          Sampling frequency (usually 16000).
+    plot_coher:  If True, displays the coherence plot.
+
+    Returns:
+    --------
+    f (ndarray):   Frequency vector.
+    Cxy (ndarray): Coherence values for each frequency.
+    """
+    n_overlap, window_size = stft_params_calc(fs)
+    f, cxy = sg.coherence(sig, noise, fs=fs, noverlap=n_overlap, nperseg=window_size)
+    if plot_coher:
+        plt.plot(f, cxy)
+        plt.xlabel("frequency [Hz]")
+        plt.ylabel("Coherence")
+        plt.show(block=True)
+    return f, cxy
+
+
 def adjusting_delays(sig_to_adjust: np.ndarray, sig_source: np.ndarray, tau: int) -> Tuple[np.ndarray, np.ndarray]:
     """
     Aligns two signals in time by shifting one relative to the other based on a calculated delay.
@@ -400,7 +406,30 @@ def adjusting_delays(sig_to_adjust: np.ndarray, sig_source: np.ndarray, tau: int
     return sig_to_adjust, sig_source
 
 
-# 3. Transfer functions processes
+def normalize_sig(sig):
+    """
+    Performs Peak Normalization on a digital audio signal.
+
+    This process finds the highest absolute value in the signal and scales
+    every sample so that the peak reaches exactly 1.0 (or -1.0).
+
+    Parameters:
+    -----------
+    sig (np.ndarray): The input audio signal array. Can be a raw signal
+                      from a WAV file or the output of an ANC filter
+                      (like NLMS, RLS, or NKF).
+
+    Returns:
+    --------
+    np.ndarray: The normalized signal where all values are within the
+                range [-1.0, 1.0].
+    """
+    return sig / np.max(np.abs(sig))
+
+
+# -------------------------------------------------
+# 3. Generate Data Functions
+# -------------------------------------------------
 
 
 def distortion_ir(noise: np.ndarray) -> np.ndarray:
@@ -439,25 +468,34 @@ def distortion_ir(noise: np.ndarray) -> np.ndarray:
     return noise
 
 
-def normalize_sig(sig):
+def convolve_rir(signal, rir):
+    """Fast convolution with truncation."""
+    out = sg.fftconvolve(signal, rir)
+    return out[: len(signal)]
+
+
+def loop_noise(noise, target_len):
+    """Loop noise if shorter than speech."""
+    if len(noise) < target_len:
+        repeats = int(np.ceil(target_len / len(noise)))
+        noise = np.tile(noise, repeats)
+
+    return noise[:target_len]
+
+
+def compute_scaling_snr(clean, noise, target_snr_db):
     """
-    Performs Peak Normalization on a digital audio signal.
-
-    This process finds the highest absolute value in the signal and scales
-    every sample so that the peak reaches exactly 1.0 (or -1.0).
-
-    Parameters:
-    -----------
-    sig (np.ndarray): The input audio signal array. Can be a raw signal
-                      from a WAV file or the output of an ANC filter
-                      (like NLMS, RLS, or NKF).
-
-    Returns:
-    --------
-    np.ndarray: The normalized signal where all values are within the
-                range [-1.0, 1.0].
+    Compute exact scaling factor to achieve target SNR.
     """
-    return sig / np.max(np.abs(sig))
+
+    clean_power = np.mean(clean**2)
+    noise_power = np.mean(noise**2)
+
+    target_noise_power = clean_power / (10 ** (target_snr_db / 10))
+
+    scale = np.sqrt(target_noise_power / noise_power)
+
+    return scale
 
 
 # 3. Envelope Process

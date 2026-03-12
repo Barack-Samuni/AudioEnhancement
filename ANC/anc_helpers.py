@@ -99,7 +99,7 @@ def alignment_process(
 
 def analyze_rls(
     fs_resample: int, iteration: int, resampled_noise: np.ndarray, resampled_sig: np.ndarray, results_dir: Path
-):
+) -> None:
     """
     Executes the Recursive Least Squares (RLS) filter test.
 
