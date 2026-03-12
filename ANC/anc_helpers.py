@@ -132,7 +132,7 @@ def analyze_rls(
 
 def analyze_nkf(
     fs_resample: int, iteration: int, resampled_noise: np.ndarray, resampled_sig: np.ndarray, results_dir: Path
-):
+) -> None:
     """
     Executes the Neural Kalman Filter (NKF) test.
 
@@ -156,7 +156,7 @@ def analyze_nkf(
 
 def analyze_nlms(
     fs_resample: int, iteration: int, resampled_noise: np.ndarray, resampled_sig: np.ndarray, results_dir: Path
-):
+) -> None:
     """
     Executes the Normalized LEAST Mean Squares (NLMS) filter test.
 
