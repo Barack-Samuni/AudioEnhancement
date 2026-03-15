@@ -42,7 +42,11 @@ FilterType = Literal[
 ]
 
 
-def lin2dB(sig: np.ndarray, Power: bool = False) -> np.ndarray:
+def time_to_indices(fs, time):
+    return int(fs * time)
+
+
+def lin2dB(sig: np.ndarray, power: bool = False) -> np.ndarray:
     """
     Converts a linear signal to the Decibel (dB) scale.
 
@@ -54,7 +58,7 @@ def lin2dB(sig: np.ndarray, Power: bool = False) -> np.ndarray:
     """
     # 1. Take the absolute value to ensure we don't log a negative number
     # 2. Add EPSILON to prevent log(0) which returns -inf
-    if Power:
+    if power:
         # P_dB = 10 * log10(P_linear)
         return 10 * np.log10(np.abs(sig) + EPSILON)
     else:
@@ -62,7 +66,7 @@ def lin2dB(sig: np.ndarray, Power: bool = False) -> np.ndarray:
         return 20 * np.log10(np.abs(sig) + EPSILON)
 
 
-def dB2lin(db_sig: np.ndarray, Power: bool = False) -> np.ndarray:
+def dB2lin(db_sig: np.ndarray, power: bool = False) -> np.ndarray:
     """
     Converts a Decibel (dB) value back to the linear scale.
 
@@ -72,7 +76,7 @@ def dB2lin(db_sig: np.ndarray, Power: bool = False) -> np.ndarray:
     Power:  If True, uses 10^(dB/10).
             If False, uses 10^(dB/20).
     """
-    if Power:
+    if power:
         # P_linear = 10^(P_dB / 10)
         return 10 ** (db_sig / 10.0)
     else:
@@ -165,7 +169,7 @@ def calc_stft(sig: np.ndarray, fs: int, mode: str = "linear") -> Tuple[np.ndarra
     return f1, t1, sig_stft
 
 
-def stft_params_calc(fs: int) -> Tuple[int, int]:
+def stft_params_calc(fs: int) -> tuple[float, int]:
     """
     Helper to convert time durations (seconds) into discrete samples based on fs.
 
@@ -175,8 +179,8 @@ def stft_params_calc(fs: int) -> Tuple[int, int]:
     Returns:
         tuple: (number of overlapping samples, window size in samples)
     """
-    window_size = int(fs * WIN_DUR)
-    n_overlap = int(((WIN_DUR * fs) * (1 - HOP_FRAC)))
+    window_size = time_to_indices(fs, WIN_DUR)
+    n_overlap = window_size * (1 - HOP_FRAC)
     return n_overlap, window_size
 
 
@@ -537,3 +541,10 @@ def get_peak_envelope(signal, fs, attack_ms=2, release_ms=100):
 def maximum_filter_env(signal, window):
     envelope = maximum_filter1d(np.abs(signal), size=window)
     return envelope
+
+
+def optimal_offsets(sig, fs, time=1):
+    start_offset = time_to_indices(fs, time)
+    stop_offset = len(sig) - start_offset
+    sig = sig[start_offset:stop_offset]
+    return sig
