@@ -1,5 +1,6 @@
 import random
-from typing import Any, Dict
+from itertools import product
+from typing import Any, Tuple
 
 import files_handler as io_loader
 import matplotlib.pyplot as plt
@@ -8,166 +9,195 @@ import pytest
 
 from src import utils as ut
 
+# Define the grid of parameters to be tested:
+# WINDOW_SIZES: The number of samples for the sliding max filter (50 to 450)
+# LPF_CUTOFFS: The frequency threshold in Hz for the Butterworth low-pass filter (10 to 45)
 WINDOW_SIZES = np.arange(start=50, stop=500, step=50)
 LPF_CUTOFFS = np.arange(start=10, stop=50, step=5)
 
 
 @pytest.fixture(scope="session")
-def raw_audio():
-    """Loads the sound file from disk ONLY ONCE for the entire run."""
+def load_data():
+    """
+    Session-scoped fixture: Loads the audio file once per test session.
+    - select_audio_files: Opens a file dialog for the user.
+    - load_sound: Reads the audio data and returns the signal (noise) and sample rate (fs).
+    """
     print("\n[Disk IO] Loading master audio file...")
     noise_file = io_loader.select_audio_files()
-    noise, fs = io_loader.load_sound(noise_file[0])
-    return {"noise": noise, "fs": fs}
+    noise, fs_noise = io_loader.load_sound(noise_file[0])
+    return {"noise": noise, "fs": fs_noise}
 
 
-# --- 3. Module Level: Parameters ---
-# We set scope="module" here to allow env_data (also module-scoped) to access them.
-@pytest.fixture(scope="module", params=WINDOW_SIZES, ids=[f"Win_{w}" for w in WINDOW_SIZES])
-def window_size(request):
-    return request.param
+@pytest.mark.parametrize(
+    "window_size, cutoff",
+    [(w, c) for w, c in product(WINDOW_SIZES, LPF_CUTOFFS)],
+    # Generates descriptive names for each test case in the pytest runner
+    ids=[f"Window_{w}samples,Cutoff_{c}Hz" for w, c in product(WINDOW_SIZES, LPF_CUTOFFS)],
+)
+def test_env(window_size, cutoff, load_data):
+    """
+    Core Test Suite: Validates the envelope extraction algorithm.
+    Steps:
+    1. Extract data from the fixture.
+    2. Process the noise to get raw and normalized envelopes via get_env.
+    3. Run a battery of validation functions (positivity, bounds, logic, etc.).
+    4. Generate visual plots for debugging.
+    """
+    noise = load_data["noise"]
+    fs_noise = load_data["fs"]
 
+    # Process the signal and handle time offsets
+    envelope, noise, normalized_envelope, normalized_noise, t = get_env(cutoff, fs_noise, noise, window_size)
 
-@pytest.fixture(scope="module", params=LPF_CUTOFFS, ids=[f"LPF_{c}Hz" for c in LPF_CUTOFFS])
-def lpf_cutoff(request):
-    return request.param
+    # Validate that all envelope values are >= 0
+    check_positivity(envelope=envelope, window_size=window_size, cutoff=cutoff)
 
+    # Validate that normalized signals stay within the [0, 1] range
+    check_normalization(sig=normalized_envelope, label="Envelope")
 
-@pytest.fixture(scope="module")
-def env_data(raw_audio, window_size, lpf_cutoff) -> Dict[str, Any]:
-    # We pass the ALREADY LOADED raw_audio dictionary into the logic function
-    envelope, fs, noise, norm_env, norm_noise, t = get_envelope_logic(
-        raw_audio=raw_audio,  # Pass it here!
-        maximum_flit_window=window_size,
-        cut_lpf=lpf_cutoff,
+    # Validate that the envelope physically 'contains' the signal (with tolerance)
+    check_envelope_bounds(envelope=envelope, window_size=window_size, cutoff=cutoff, noise=noise)
+
+    # Validate that the envelope is smoother (lower variation) than the raw noise
+    check_envelope_smoothness(envelope=envelope, window_size=window_size, cutoff=cutoff, noise=noise)
+
+    # Mathematically verify the max-filter logic at a random index
+    check_max_filter_logic(envelope=envelope, window_size=window_size, cutoff=cutoff, noise=noise)
+
+    # Render plots for visual verification
+    check_visual_env(
+        t=t,
+        noise=noise,
+        envelope=envelope,
+        normalized_noise=normalized_noise,
+        normalized_envelope=normalized_envelope,
+        window_size=window_size,
+        lpf_cutoff=cutoff,
+        fs_noise=fs_noise,
     )
 
-    return {
-        "envelope": envelope,
-        "noise": noise,
-        "fs": fs,
-        "norm_env": norm_env,
-        "norm_noise": norm_noise,
-        "t": t,
-        "window": window_size,
-        "cutoff": lpf_cutoff,
-    }
 
-
-def get_envelope_logic(raw_audio: dict, maximum_flit_window: int, cut_lpf: int):
+def get_env(cutoff: int, fs_noise: int, noise: np.ndarray, window_size: int) -> Tuple[Any, Any, Any, Any, Any]:
     """
-    Accepts the preloaded raw_audio dictionary.
+    Signal Processing Pipeline:
+    - Generates time vector 't'.
+    - Applies sliding maximum filter for initial envelope detection.
+    - Applies Butterworth Low-Pass Filter (LPF) to smooth the envelope.
+    - Normalizes signals for comparison.
+    - Validates data integrity (None checks, shape checks).
+    - Synchronizes signal offsets to account for filter group delays.
     """
-    # Now raw_audio is a dictionary, so this works:
-    noise = raw_audio["noise"]
-    fs_noise = raw_audio["fs"]
-
+    # Create the time axis based on sample rate and signal length
     t = np.linspace(0, len(noise) / fs_noise, len(noise))
 
-    # Apply Maximum Filter
-    envelope = ut.maximum_filter_env(noise, maximum_flit_window)
+    # Step 1: Maximum Filter - extracts peaks over a window
+    envelope = ut.maximum_filter_env(noise, window_size)
 
-    # Apply Butterworth Low-Pass Filter
-    envelope = ut.butter_filter(data=envelope, cutoff=cut_lpf, fs=fs_noise, btype="lowpass")
+    # Step 2: Low-Pass Filter - removes high frequency noise from the envelope
+    envelope = ut.butter_filter(data=envelope, cutoff=cutoff, fs=fs_noise, btype="lowpass")
 
-    # Normalize signals
+    # Step 3: Normalization - scales signals between 0 and 1
     normalized_envelope = ut.normalize_sig(envelope)
     normalized_noise = ut.normalize_sig(noise)
 
-    return envelope, fs_noise, noise, normalized_envelope, normalized_noise, t
+    # Internal Integrity Check: Ensure objects are not None
+    check_none_vals(envelope=envelope, window_size=window_size, cutoff=cutoff)
+
+    # Internal Integrity Check: Ensure input and output array lengths match
+    check_array_shapes(envelope=envelope, noise=noise)
+
+    # Offset Alignment: Compensates for processing delays to ensure t and signals align
+    envelope = ut.optimal_offsets(envelope, fs_noise)
+    normalized_envelope = ut.optimal_offsets(normalized_envelope, fs_noise)
+    normalized_noise = ut.optimal_offsets(normalized_noise, fs_noise)
+    noise = ut.optimal_offsets(noise, fs_noise)
+    t = ut.optimal_offsets(t, fs_noise)
+
+    return envelope, noise, normalized_envelope, normalized_noise, t
 
 
-def test_positivity(env_data):
-    assert np.all(env_data["envelope"] >= 0), "Envelope should be positive."
+# --- Validation Functions (English Documentation) ---
 
 
-def test_envelope_bounds(env_data):
+def check_none_vals(envelope, window_size, cutoff):
+    """Ensure the generated envelope is not None."""
+    assert envelope is not None, f"Envelope is None for params: {(window_size, cutoff)}"
+
+
+def check_array_shapes(envelope, noise):
+    """Check: Output consistency. Envelope length must match source signal length."""
+    assert len(envelope) == len(noise)
+
+
+def check_positivity(envelope, window_size, cutoff):
+    """Verify that the envelope values remain non-negative."""
+    assert np.all(envelope >= 0 - ut.EPSILON), f"Envelope should be positive for params: {(window_size, cutoff)}"
+
+
+def check_normalization(sig, label):
+    """Ensure the signal values stay within the [0, 1] range (plus epsilon)."""
+    assert np.max(sig) <= 1.0 + ut.EPSILON, f"{label} max exceeds 1.0"
+    assert np.min(sig) >= 0.0 - ut.EPSILON, f"{label} min below 0.0"
+
+
+def check_envelope_bounds(envelope, window_size, cutoff, noise):
     """
     Validation: Physical Boundary Constraint.
-    The envelope extracted by a maximum filter must always be greater than
-    or equal to the absolute value of the source signal.
+    The envelope extracted by a maximum filter at least will be greater than
+     or equal to 80% absolute value of the source signal.
     """
-    # We subtract a tiny EPSILON to prevent test failure due to
-    # microscopic floating-point rounding errors.
+    # Using 0.80 multiplier as per user logic to allow for smoothing tolerance
     assert np.all(
-        env_data["envelope"] >= np.abs(env_data["noise"]) - ut.EPSILON
-    ), "Envelope dropped below the absolute signal magnitude."
+        envelope >= (np.abs(noise) * 0.80)
+    ), f"Envelope dropped below the absolute signal magnitude for params: {(window_size, cutoff)}"
 
 
-def test_envelope_smoothness(env_data):
+def check_envelope_smoothness(envelope, window_size, cutoff, noise):
     """
     Validation: Signal Complexity Reduction.
-    The 'Total Variation' (sum of absolute differences) of the envelope
-    should be lower than the raw signal because the envelope ignores
-    high-frequency oscillations.
+    The 'Total Variation' of the envelope should be lower than the raw signal.
     """
-    sig_variation = np.sum(np.abs(np.diff(env_data["noise"])))
-    env_variation = np.sum(np.abs(np.diff(env_data["envelope"])))
-    # A valid envelope 'strips away' the carrier wave,
-    # resulting in a much shorter total path length.
-    assert env_variation < sig_variation, f"Envelope ({env_variation}) is noisier than the signal ({sig_variation})."
+    sig_variation = np.sum(np.abs(np.diff(noise)))
+    env_variation = np.sum(np.abs(np.diff(envelope)))
+    assert (
+        env_variation < sig_variation
+    ), f"Envelope ({env_variation}) is noisier than the signal ({sig_variation}) for params: {(window_size, cutoff)}."
 
 
-def test_max_filter_logic(env_data):
+def check_max_filter_logic(envelope, window_size, cutoff, noise):
     """
     Validation: Mathematical Definition Check.
-    Picks a random point and manually verifies that the envelope value
-    matches the maximum absolute value within the sliding window.
+    Verifies a random point to ensure envelope matches local maximum absolute value.
     """
-    # Select a random index, avoiding edges where the window might
-    # behave differently (padding/truncation).
-    noise = env_data["noise"]
-    envelope = env_data["envelope"]
-    maximum_flit_window = env_data["window"]
-    idx = random.randint(maximum_flit_window, len(noise) - maximum_flit_window)
-
-    # Replicate the max-filter logic: Look at the raw signal values
-    # within the window centered at our random index.
-    half_w = maximum_flit_window // 2
+    idx = random.randint(window_size, len(envelope) - window_size)
+    half_w = window_size // 2
     local_segment = np.abs(noise[idx - half_w : idx + half_w])
     expected_max = np.max(local_segment)
 
-    # Ensure the calculated envelope matches our manual 'truth'
-    # for this specific point.
+    # Comparing envelope at idx with expected max using relative tolerance
     assert envelope[idx] == pytest.approx(
-        expected_max, rel=0.5
-    ), f"Envelope at index {idx} does not match the local maximum."
+        expected_max, rel=0.15
+    ), f"Envelope for params: {(window_size, cutoff)}  at index {idx} does not match the local maximum."
 
 
-def test_normalization_integrity(env_data):
-    """Check: Signal normalization stays within [0, 1] range."""
-    norm_env = env_data["norm_env"]
-    assert np.max(norm_env) <= 1.0 + ut.EPSILON
-    assert np.min(norm_env) >= 0.0 - ut.EPSILON
-
-
-def test_array_shapes(env_data):
-    """Check: Output consistency. Envelope length must match source signal length."""
-    assert len(env_data["envelope"]) == len(env_data["noise"])
-
-
-def test_visual_env(env_data) -> None:
-    # Create a figure with a consistent 1x3 grid
-    noise = env_data["noise"]
-    envelope = env_data["envelope"]
-    fs_noise = env_data["fs"]
-    normalized_envelope = env_data["norm_env"]
-    normalized_noise = env_data["norm_noise"]
-    t = env_data["t"]
-
+def check_visual_env(t, noise, envelope, normalized_noise, normalized_envelope, window_size, lpf_cutoff, fs_noise):
+    """Generate diagnostic plots for visual inspection of the envelope results."""
     plt.figure(figsize=(15, 5))
+    t_prev = np.minimum(10, int(np.max(t)))
+    samps = ut.time_to_indices(fs_noise, t_prev)
 
     # Plot 1: Raw Noise and the Envelope
     plt.subplot(1, 3, 1)
-    plt.plot(t[: 10 * fs_noise], noise[: 10 * fs_noise], label="Noise", alpha=0.5)
-    plt.plot(t[: 10 * fs_noise], envelope[: 10 * fs_noise], label="Envelope", linewidth=2, color="red")
-    plt.title(f"Original Noise & Envelope {env_data['window']}smps, {env_data['cutoff']}hz")
+    plt.plot(t[:samps], noise[:samps], label="Noise", alpha=0.5)
+    plt.plot(t[:samps], envelope[:samps], label="Envelope", linewidth=2, color="red")
+    plt.title(f"Original Noise & Envelope {window_size}samples, {lpf_cutoff}hz")
     plt.legend()
 
     # Plot 2: The Normalized Envelope (Zoomed)
     plt.subplot(1, 3, 2)
-    plt.plot(t[: 10 * fs_noise], normalized_envelope[: 10 * fs_noise], color="orange")
-    plt.title("Normalized Envelope (10s)")
+    plt.plot(t[:samps], normalized_envelope[:samps], color="orange")
+    plt.title(f"Normalized Envelope ({t_prev})")
 
     # Plot 3: The Full Normalized Envelope
     plt.subplot(1, 3, 3)
@@ -175,5 +205,5 @@ def test_visual_env(env_data) -> None:
     plt.plot(t, normalized_envelope, color="green")
     plt.title("Full Normalized Envelope")
 
-    plt.tight_layout()  # Prevents labels from overlapping
+    plt.tight_layout()
     plt.show()
