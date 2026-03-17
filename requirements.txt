@@ -1,1 +1,5 @@
+numpy==2.4.3
 pesq==0.0.4
+pystoi==0.4.1
+scipy==1.17.1
+soundfile==0.12.1
