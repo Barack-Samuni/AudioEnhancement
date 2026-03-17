@@ -24,8 +24,8 @@ def add_white_noise(input_path, output_path, snr_db):
     noisy_signal = np.clip(noisy_signal, -32768, 32767) # למניעת עיוות (Clipping)
     wavfile.write(output_path, fs, noisy_signal.astype(np.int16))
 
-# שימוש בפונקציה
-input_audio = rf"recordings\recording_ori_gt.wav"
-output_audio = rf"recordings\output_with_noise.wav"
-snr_db = 10
-add_white_noise(input_path=input_audio,  output_path=output_audio, snr_db=10)
+def main():
+    input_audio = rf"recordings\recording_ori_gt.wav"
+    output_audio = rf"recordings\output_with_noise.wav"
+    snr_db = 10
+    add_white_noise(input_path=input_audio,  output_path=output_audio, snr_db=10)
